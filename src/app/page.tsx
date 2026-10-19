@@ -132,13 +132,12 @@ function DashboardShell() {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         {/* Top Header Bar: Optimized space with Active Program and Course Display */}
         <header className="sticky top-0 z-20 bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-6 py-2.5 flex items-center justify-between gap-4">
-          {/* Left: Active Module Identifier */}
+          {/* Left: Active Module Identifier without numbering */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-950/60 border border-indigo-800/80 px-2 py-0.5 rounded">
-              Module {currentMenuConfig.orderNumber}
+            <span className="p-1 rounded-lg bg-indigo-950/60 border border-indigo-800/80 text-indigo-400">
+              <currentMenuConfig.icon className="w-4 h-4" />
             </span>
-            <span className="text-slate-600 text-xs">/</span>
-            <span className="text-sm font-bold text-white tracking-tight truncate max-w-[150px] lg:max-w-none">
+            <span className="text-sm font-bold text-white tracking-tight truncate max-w-[180px] lg:max-w-none">
               {currentMenuConfig.label}
             </span>
           </div>

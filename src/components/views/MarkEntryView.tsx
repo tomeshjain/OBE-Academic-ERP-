@@ -222,9 +222,54 @@ export const MarkEntryView: React.FC = () => {
   // Save state tracking
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+  const [focusedCell, setFocusedCell] = useState<{ row: number; col: number } | null>(null);
 
-  // Mark Helpers - Unified Frictionless Input (No Dropdowns!)
-  // Accepts numeric marks, or shorthand codes: 'AB' (Absent), 'MP' (Malpractice), 'EX' (Exempted), '-' (Pending)
+  // Live Matrix Evaluation Statistics
+  const matrixStats = useMemo(() => {
+    let evaluatedCount = 0;
+    let presentCount = 0;
+    let absentCount = 0;
+    let malpracticeCount = 0;
+    let exemptedCount = 0;
+
+    filteredStudents.forEach((s) => {
+      activeQuestions.forEach((q) => {
+        const entry = getMark(s.id, q.id);
+        if (entry) {
+          if (entry.statusCode === 'PRESENT' && typeof entry.marksObtained === 'number') {
+            evaluatedCount++;
+            presentCount++;
+          } else if (entry.statusCode === 'ABSENT') {
+            evaluatedCount++;
+            absentCount++;
+          } else if (entry.statusCode === 'MALPRACTICE') {
+            evaluatedCount++;
+            malpracticeCount++;
+          } else if (entry.statusCode === 'EXEMPTED') {
+            evaluatedCount++;
+            exemptedCount++;
+          }
+        }
+      });
+    });
+
+    const totalCells = filteredStudents.length * activeQuestions.length;
+    const progressPercent = totalCells > 0 ? Math.round((evaluatedCount / totalCells) * 100) : 0;
+
+    return {
+      totalCells,
+      evaluatedCount,
+      pendingCount: totalCells - evaluatedCount,
+      presentCount,
+      absentCount,
+      malpracticeCount,
+      exemptedCount,
+      progressPercent,
+    };
+  }, [filteredStudents, activeQuestions, marks]);
+
+  // Mark Helpers - Unified Frictionless Input with Smart Auto-Conversion!
+  // When cursor is at the end of AB / EX / MP and a number is typed, automatically extracts the number
   const handleCellInput = (
     enrollmentId: string,
     questionId: string,
@@ -240,27 +285,42 @@ export const MarkEntryView: React.FC = () => {
     }
 
     setHasUnsavedChanges(true);
-    const cleaned = rawText.trim().toUpperCase();
 
-    // 1. Pending / Not Evaluated cases: empty or '-'
+    let cleaned = rawText.trim().toUpperCase();
+
+    // SMART AUTO-CONVERSION:
+    // If the input contains both letters (AB, EX, MP, etc.) and digits (e.g. user typed a number at the end of AB -> 'AB5' or '5AB'),
+    // strip the status code letters and convert directly to numeric input!
+    if (/[0-9]/.test(cleaned) && /[A-Z]/.test(cleaned)) {
+      const digitsOnly = cleaned.replace(/[^0-9.]/g, '');
+      if (digitsOnly !== '') {
+        cleaned = digitsOnly;
+      }
+    }
+
+    // 1. Pending / Not Evaluated cases: empty, '-', or whitespace
     if (cleaned === '' || cleaned === '-') {
       updateMarkEntry(enrollmentId, questionId, 'NOT_EVALUATED', null);
+      setActionMessage(null);
       return;
     }
 
     // 2. Attendance / Special evaluation codes:
     if (cleaned === 'AB' || cleaned === 'A' || cleaned === 'ABS') {
       updateMarkEntry(enrollmentId, questionId, 'ABSENT', 0);
+      setActionMessage(null);
       return;
     }
 
     if (cleaned === 'MP' || cleaned === 'M' || cleaned === 'MAL') {
       updateMarkEntry(enrollmentId, questionId, 'MALPRACTICE', 0);
+      setActionMessage(null);
       return;
     }
 
     if (cleaned === 'EX' || cleaned === 'E' || cleaned === 'EXE') {
       updateMarkEntry(enrollmentId, questionId, 'EXEMPTED', 0);
+      setActionMessage(null);
       return;
     }
 
@@ -282,33 +342,172 @@ export const MarkEntryView: React.FC = () => {
     // Invalid code entered
     setActionMessage({
       type: 'error',
-      text: `Invalid entry "${rawText}". Enter a number (0–${maxMarks}), or AB (Absent), MP (Malpractice), EX (Exempted), or - (Pending).`,
+      text: `Invalid entry "${rawText}". Enter a score (0–${maxMarks}), or AB (Absent), MP (Malpractice), EX (Exempted), or - (Pending).`,
     });
   };
 
-  // Keyboard navigation for Excel-style down/up arrow and Enter key navigation
+  // Comprehensive Excel-Style 4-Way Keyboard Navigation & Fast Single-Key Shortcuts
   const handleCellKeyDown = (
-    e: React.KeyboardEvent,
+    e: React.KeyboardEvent<HTMLInputElement>,
+    studentId: string,
+    questionId: string,
+    maxMarks: number,
     rowIdx: number,
     colIdx: number,
     totalRows: number,
     totalCols: number
   ) => {
-    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+    const key = e.key;
+
+    // Fast Single-Key Code Evaluation Shortcuts (A = Absent, M = Malpractice, E = Exempted):
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (key === 'a' || key === 'A') {
+        e.preventDefault();
+        updateMarkEntry(studentId, questionId, 'ABSENT', 0);
+        setHasUnsavedChanges(true);
+        const nextRow = Math.min(rowIdx + 1, totalRows - 1);
+        const nextCell = document.getElementById(`mark-cell-${nextRow}-${colIdx}`);
+        if (nextCell) {
+          (nextCell as HTMLInputElement).focus();
+          (nextCell as HTMLInputElement).select();
+        }
+        return;
+      }
+
+      if (key === 'm' || key === 'M') {
+        e.preventDefault();
+        updateMarkEntry(studentId, questionId, 'MALPRACTICE', 0);
+        setHasUnsavedChanges(true);
+        const nextRow = Math.min(rowIdx + 1, totalRows - 1);
+        const nextCell = document.getElementById(`mark-cell-${nextRow}-${colIdx}`);
+        if (nextCell) {
+          (nextCell as HTMLInputElement).focus();
+          (nextCell as HTMLInputElement).select();
+        }
+        return;
+      }
+
+      if (key === 'e' || key === 'E') {
+        e.preventDefault();
+        updateMarkEntry(studentId, questionId, 'EXEMPTED', 0);
+        setHasUnsavedChanges(true);
+        const nextRow = Math.min(rowIdx + 1, totalRows - 1);
+        const nextCell = document.getElementById(`mark-cell-${nextRow}-${colIdx}`);
+        if (nextCell) {
+          (nextCell as HTMLInputElement).focus();
+          (nextCell as HTMLInputElement).select();
+        }
+        return;
+      }
+    }
+
+    // Fast Backspace / Delete reset for status codes
+    const currentEntry = getMark(studentId, questionId);
+    if (
+      (key === 'Backspace' || key === 'Delete') &&
+      currentEntry &&
+      currentEntry.statusCode !== 'PRESENT' &&
+      currentEntry.statusCode !== 'NOT_EVALUATED'
+    ) {
       e.preventDefault();
-      const nextRow = Math.min(rowIdx + 1, totalRows - 1);
-      const nextCell = document.getElementById(`mark-cell-${nextRow}-${colIdx}`);
+      updateMarkEntry(studentId, questionId, 'NOT_EVALUATED', null);
+      setHasUnsavedChanges(true);
+      return;
+    }
+
+    // Vertical Navigation: Enter or Down Arrow
+    if (key === 'Enter' || key === 'ArrowDown') {
+      e.preventDefault();
+      let nextRow = rowIdx + 1;
+      let nextCol = colIdx;
+      if (nextRow >= totalRows) {
+        // Wrap to the top of the next question column
+        if (colIdx + 1 < totalCols) {
+          nextRow = 0;
+          nextCol = colIdx + 1;
+        } else {
+          nextRow = totalRows - 1;
+        }
+      }
+      const nextCell = document.getElementById(`mark-cell-${nextRow}-${nextCol}`);
       if (nextCell) {
         (nextCell as HTMLInputElement).focus();
         (nextCell as HTMLInputElement).select();
       }
-    } else if (e.key === 'ArrowUp') {
+    } else if (key === 'ArrowUp') {
       e.preventDefault();
-      const prevRow = Math.max(rowIdx - 1, 0);
-      const prevCell = document.getElementById(`mark-cell-${prevRow}-${colIdx}`);
+      let prevRow = rowIdx - 1;
+      let prevCol = colIdx;
+      if (prevRow < 0) {
+        if (colIdx - 1 >= 0) {
+          prevRow = totalRows - 1;
+          prevCol = colIdx - 1;
+        } else {
+          prevRow = 0;
+        }
+      }
+      const prevCell = document.getElementById(`mark-cell-${prevRow}-${prevCol}`);
       if (prevCell) {
         (prevCell as HTMLInputElement).focus();
         (prevCell as HTMLInputElement).select();
+      }
+    } else if (key === 'Tab' && !e.shiftKey) {
+      e.preventDefault();
+      let nextRow = rowIdx;
+      let nextCol = colIdx + 1;
+      if (nextCol >= totalCols) {
+        if (rowIdx + 1 < totalRows) {
+          nextRow = rowIdx + 1;
+          nextCol = 0;
+        } else {
+          nextCol = totalCols - 1;
+        }
+      }
+      const nextCell = document.getElementById(`mark-cell-${nextRow}-${nextCol}`);
+      if (nextCell) {
+        (nextCell as HTMLInputElement).focus();
+        (nextCell as HTMLInputElement).select();
+      }
+    } else if (key === 'Tab' && e.shiftKey) {
+      e.preventDefault();
+      let prevRow = rowIdx;
+      let prevCol = colIdx - 1;
+      if (prevCol < 0) {
+        if (rowIdx - 1 >= 0) {
+          prevRow = rowIdx - 1;
+          prevCol = totalCols - 1;
+        } else {
+          prevCol = 0;
+        }
+      }
+      const prevCell = document.getElementById(`mark-cell-${prevRow}-${prevCol}`);
+      if (prevCell) {
+        (prevCell as HTMLInputElement).focus();
+        (prevCell as HTMLInputElement).select();
+      }
+    } else if (key === 'ArrowRight') {
+      const input = e.currentTarget;
+      if (input.selectionEnd === input.value.length || (input.selectionStart === 0 && input.selectionEnd === input.value.length)) {
+        if (colIdx + 1 < totalCols) {
+          e.preventDefault();
+          const nextCell = document.getElementById(`mark-cell-${rowIdx}-${colIdx + 1}`);
+          if (nextCell) {
+            (nextCell as HTMLInputElement).focus();
+            (nextCell as HTMLInputElement).select();
+          }
+        }
+      }
+    } else if (key === 'ArrowLeft') {
+      const input = e.currentTarget;
+      if (input.selectionStart === 0) {
+        if (colIdx - 1 >= 0) {
+          e.preventDefault();
+          const prevCell = document.getElementById(`mark-cell-${rowIdx}-${colIdx - 1}`);
+          if (prevCell) {
+            (prevCell as HTMLInputElement).focus();
+            (prevCell as HTMLInputElement).select();
+          }
+        }
       }
     }
   };
@@ -323,7 +522,7 @@ export const MarkEntryView: React.FC = () => {
     });
   };
 
-  // Quick fill helper
+  // Quick fill helper: mark pending as Absent
   const handleMarkAllPendingAsAbsent = () => {
     if (!canEditMarks) return;
     if (confirm('Mark all currently pending (-) students as Absent (AB) for this assessment?')) {
@@ -339,6 +538,26 @@ export const MarkEntryView: React.FC = () => {
       setActionMessage({
         type: 'info',
         text: 'All remaining pending entries marked as Absent (AB). Click "Save Marks" to persist.',
+      });
+    }
+  };
+
+  // Quick fill helper: mark pending as 0
+  const handleMarkAllPendingAsZero = () => {
+    if (!canEditMarks) return;
+    if (confirm('Assign 0 marks to all currently pending (-) unanswered questions?')) {
+      filteredStudents.forEach((student) => {
+        activeQuestions.forEach((q) => {
+          const entry = getMark(student.id, q.id);
+          if (!entry || entry.statusCode === 'NOT_EVALUATED') {
+            updateMarkEntry(student.id, q.id, 'PRESENT', 0);
+          }
+        });
+      });
+      setHasUnsavedChanges(true);
+      setActionMessage({
+        type: 'info',
+        text: 'All pending question cells filled with 0 marks. Click "Save Marks" to persist.',
       });
     }
   };
@@ -566,12 +785,10 @@ export const MarkEntryView: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-400 uppercase tracking-wider mb-0.5">
-              <span>Module 8</span>
-              <span>&bull;</span>
               <span>Faculty Assessment &amp; Mark Entry</span>
             </div>
             <h1 className="text-xl font-bold text-white tracking-tight">
-              Filling of Question Wise Marks
+              Question-Wise Marks Entry
             </h1>
             <p className="text-slate-400 text-xs mt-0.5">
               Enter question-level scores for students in paired sections within admin-configured deadlines.
@@ -850,6 +1067,17 @@ export const MarkEntryView: React.FC = () => {
                 <span>Mark Remaining as AB</span>
               </button>
 
+              {/* Quick Fill Remaining as 0 Button */}
+              <button
+                disabled={!canEditMarks}
+                onClick={handleMarkAllPendingAsZero}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors"
+                title="Fill all pending (-) unanswered questions with 0 marks"
+              >
+                <Check className="w-3.5 h-3.5 text-slate-400" />
+                <span>Fill Remaining with 0M</span>
+              </button>
+
               <button
                 onClick={() => {
                   if (filteredStudents.length === 0 || activeQuestions.length === 0) {
@@ -1070,30 +1298,75 @@ export const MarkEntryView: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              {/* Live Assessment Evaluation Summary Statistics Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 p-3 bg-slate-950/90 border border-slate-800 rounded-2xl text-xs shadow-sm">
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Students</div>
+                  <div className="text-lg font-black text-white mt-0.5">{filteredStudents.length}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <div className="text-[10px] text-indigo-400 uppercase font-bold tracking-wider">Evaluation %</div>
+                  <div className="text-lg font-black text-indigo-300 mt-0.5">
+                    {matrixStats.progressPercent}%
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800/60">
+                  <div className="text-[10px] text-emerald-400 uppercase font-bold tracking-wider">Present</div>
+                  <div className="text-lg font-black text-emerald-300 mt-0.5">{matrixStats.presentCount}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-800/60">
+                  <div className="text-[10px] text-rose-400 uppercase font-bold tracking-wider">Absent (AB)</div>
+                  <div className="text-lg font-black text-rose-300 mt-0.5">{matrixStats.absentCount}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-800/60">
+                  <div className="text-[10px] text-red-400 uppercase font-bold tracking-wider">Malpractice (MP)</div>
+                  <div className="text-lg font-black text-red-300 mt-0.5">{matrixStats.malpracticeCount}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-800/60">
+                  <div className="text-[10px] text-blue-400 uppercase font-bold tracking-wider">Exempted (EX)</div>
+                  <div className="text-lg font-black text-blue-300 mt-0.5">{matrixStats.exemptedCount}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-800/60">
+                  <div className="text-[10px] text-amber-400 uppercase font-bold tracking-wider">Pending (-)</div>
+                  <div className="text-lg font-black text-amber-300 mt-0.5">{matrixStats.pendingCount}</div>
+                </div>
+              </div>
+
               {/* Quick Case Legend & Frictionless Data Entry Guidance Bar */}
               <div className="bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2 flex-wrap text-slate-300">
-                  <span className="font-semibold text-slate-400 uppercase text-[10px] tracking-wider">Fast Keys:</span>
+                  <span className="font-semibold text-slate-400 uppercase text-[10px] tracking-wider">Keyboard Shortcuts:</span>
                   <span className="inline-flex items-center gap-1 font-mono text-emerald-300 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-800/60">
-                    <strong>Score</strong> (e.g. 15, 8.5)
+                    <strong>0-9</strong> Score (auto-replaces AB)
                   </span>
                   <span className="inline-flex items-center gap-1 font-mono text-rose-300 bg-rose-950/50 px-2 py-0.5 rounded border border-rose-800/60">
-                    <strong>AB</strong> Absent
+                    <strong>A</strong> Absent
                   </span>
                   <span className="inline-flex items-center gap-1 font-mono text-red-200 bg-red-900/40 px-2 py-0.5 rounded border border-red-700/60">
-                    <strong>MP</strong> Malpractice
+                    <strong>M</strong> Malpractice
                   </span>
                   <span className="inline-flex items-center gap-1 font-mono text-blue-300 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-800/60">
-                    <strong>EX</strong> Exempted
+                    <strong>E</strong> Exempted
                   </span>
                   <span className="inline-flex items-center gap-1 font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                    <strong className="text-white">-</strong> Pending (Clear)
+                    <strong className="text-white">-</strong> Clear
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Press <kbd className="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-slate-200 font-mono text-[10px]">Enter</kbd> or <kbd className="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-slate-200 font-mono text-[10px]">↓</kbd> to jump to next student</span>
+                <div className="text-[11px] text-slate-400 flex items-center gap-2">
+                  <span className="flex items-center gap-1">
+                    <kbd className="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-slate-200 font-mono text-[10px]">Enter</kbd>
+                    <span className="text-slate-500">/</span>
+                    <kbd className="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-slate-200 font-mono text-[10px]">↓</kbd>
+                    <span>Next student</span>
+                  </span>
+                  <span>&bull;</span>
+                  <span className="flex items-center gap-1">
+                    <kbd className="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-slate-200 font-mono text-[10px]">Tab</kbd>
+                    <span className="text-slate-500">/</span>
+                    <kbd className="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-slate-200 font-mono text-[10px]">→</kbd>
+                    <span>Next question</span>
+                  </span>
                 </div>
               </div>
 
@@ -1116,12 +1389,22 @@ export const MarkEntryView: React.FC = () => {
                       <th className="px-4 py-3 sticky left-0 bg-slate-950 z-20 w-12 text-center">#</th>
                       <th className="px-4 py-3 sticky left-12 bg-slate-950 z-20 min-w-[130px]">Roll No</th>
                       <th className="px-4 py-3 sticky left-[178px] bg-slate-950 z-20 min-w-[180px]">Student Name</th>
-                      {activeQuestions.map((q) => {
+                      {activeQuestions.map((q, qIdx) => {
+                        const isColActive = focusedCell?.col === qIdx;
                         const coCode =
                           courseOutcomes.find((co) => co.id === q.courseOutcomeId)?.code || 'CO';
                         return (
-                          <th key={q.id} className="px-4 py-3 text-center border-l border-slate-800/80 min-w-[130px]">
-                            <div className="font-bold text-white text-xs">{q.questionNumber}</div>
+                          <th
+                            key={q.id}
+                            className={`px-4 py-3 text-center border-l border-slate-800/80 min-w-[130px] transition-colors ${
+                              isColActive
+                                ? 'bg-indigo-950/80 border-b-2 border-b-indigo-400 text-indigo-200'
+                                : 'bg-slate-950 text-slate-400'
+                            }`}
+                          >
+                            <div className={`font-bold text-xs ${isColActive ? 'text-indigo-300' : 'text-white'}`}>
+                              {q.questionNumber}
+                            </div>
                             <div className="text-[10px] text-indigo-400 font-normal">
                               Max: {q.maxMarks}M &bull; {coCode}
                             </div>
@@ -1140,16 +1423,42 @@ export const MarkEntryView: React.FC = () => {
                     {filteredStudents.map((student, idx) => {
                       let studentTotalObtained = 0;
                       let studentTotalMax = 0;
+                      const isRowActive = focusedCell?.row === idx;
 
                       return (
-                        <tr key={student.id} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="px-4 py-3 sticky left-0 bg-slate-900/90 z-10 text-center text-slate-500 font-sans text-xs">
+                        <tr
+                          key={student.id}
+                          className={`transition-colors ${
+                            isRowActive
+                              ? 'bg-indigo-950/30 ring-1 ring-inset ring-indigo-500/30'
+                              : 'hover:bg-slate-800/30'
+                          }`}
+                        >
+                          <td
+                            className={`px-4 py-3 sticky left-0 z-10 text-center font-sans text-xs transition-colors ${
+                              isRowActive
+                                ? 'bg-slate-900 text-indigo-300 font-bold border-l-2 border-l-indigo-400'
+                                : 'bg-slate-900/90 text-slate-500'
+                            }`}
+                          >
                             {idx + 1}
                           </td>
-                          <td className="px-4 py-3 sticky left-12 bg-slate-900/90 z-10 font-bold text-white">
+                          <td
+                            className={`px-4 py-3 sticky left-12 z-10 font-bold transition-colors ${
+                              isRowActive
+                                ? 'bg-slate-900 text-indigo-300'
+                                : 'bg-slate-900/90 text-white'
+                            }`}
+                          >
                             {student.rollNumber}
                           </td>
-                          <td className="px-4 py-3 sticky left-[178px] bg-slate-900/90 z-10 font-sans text-slate-200 truncate">
+                          <td
+                            className={`px-4 py-3 sticky left-[178px] z-10 font-sans truncate transition-colors ${
+                              isRowActive
+                                ? 'bg-slate-900 text-white font-semibold'
+                                : 'bg-slate-900/90 text-slate-200'
+                            }`}
+                          >
                             {student.studentName}
                           </td>
 
@@ -1157,6 +1466,8 @@ export const MarkEntryView: React.FC = () => {
                             const entry = getMark(student.id, q.id);
                             const val = entry?.marksObtained;
                             const status = entry?.statusCode || 'NOT_EVALUATED';
+                            const isCellActive = focusedCell?.row === idx && focusedCell?.col === qIdx;
+                            const isColActive = focusedCell?.col === qIdx;
 
                             if (status === 'PRESENT' && typeof val === 'number') {
                               studentTotalObtained += val;
@@ -1180,13 +1491,24 @@ export const MarkEntryView: React.FC = () => {
                             return (
                               <td
                                 key={q.id}
-                                className="px-2 py-1.5 border-l border-slate-800/60 text-center"
+                                className={`px-2 py-1.5 border-l border-slate-800/60 text-center transition-colors ${
+                                  isCellActive
+                                    ? 'bg-indigo-950/50'
+                                    : isColActive
+                                    ? 'bg-indigo-950/15'
+                                    : ''
+                                }`}
                               >
                                 {canEditMarks ? (
                                   <input
                                     id={`mark-cell-${idx}-${qIdx}`}
                                     type="text"
                                     value={cellText}
+                                    onFocus={(e) => {
+                                      e.target.select();
+                                      setFocusedCell({ row: idx, col: qIdx });
+                                    }}
+                                    onBlur={() => setFocusedCell(null)}
                                     onChange={(e) =>
                                       handleCellInput(
                                         student.id,
@@ -1198,6 +1520,9 @@ export const MarkEntryView: React.FC = () => {
                                     onKeyDown={(e) =>
                                       handleCellKeyDown(
                                         e,
+                                        student.id,
+                                        q.id,
+                                        q.maxMarks,
                                         idx,
                                         qIdx,
                                         filteredStudents.length,
@@ -1205,20 +1530,20 @@ export const MarkEntryView: React.FC = () => {
                                       )
                                     }
                                     placeholder="-"
-                                    title={`Q${q.questionNumber} (Max: ${q.maxMarks}M). Type score (0–${q.maxMarks}), or AB for Absent, MP for Malpractice, EX for Exempted, - for Pending. Press Enter for next student.`}
+                                    title={`Q${q.questionNumber} (Max: ${q.maxMarks}M). Type score (0–${q.maxMarks}), or A/M/E. Enter/Arrows to navigate.`}
                                     className={`w-16 h-8 text-center rounded-lg text-xs font-mono font-bold border transition-all ${
                                       status === 'ABSENT'
-                                        ? 'bg-rose-950/80 border-rose-700 text-rose-300 font-bold focus:ring-1 focus:ring-rose-500'
+                                        ? 'bg-rose-950/80 border-rose-700 text-rose-300 font-bold focus:ring-2 focus:ring-rose-500'
                                         : status === 'MALPRACTICE'
-                                        ? 'bg-red-950/90 border-red-600 text-red-200 font-bold focus:ring-1 focus:ring-red-500'
+                                        ? 'bg-red-950/90 border-red-600 text-red-200 font-bold focus:ring-2 focus:ring-red-500'
                                         : status === 'EXEMPTED'
-                                        ? 'bg-blue-950/80 border-blue-700 text-blue-300 font-bold focus:ring-1 focus:ring-blue-500'
+                                        ? 'bg-blue-950/80 border-blue-700 text-blue-300 font-bold focus:ring-2 focus:ring-blue-500'
                                         : status === 'PRESENT' && typeof val === 'number'
                                         ? val >= q.maxMarks * 0.6
-                                          ? 'bg-emerald-950/50 border-emerald-600/70 text-emerald-300 focus:border-emerald-400'
-                                          : 'bg-amber-950/50 border-amber-600/70 text-amber-300 focus:border-amber-400'
-                                        : 'bg-slate-950 border-slate-800 text-slate-400 placeholder:text-slate-600 focus:border-indigo-500'
-                                    } focus:outline-none focus:scale-105`}
+                                          ? 'bg-emerald-950/50 border-emerald-600/70 text-emerald-300 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400'
+                                          : 'bg-amber-950/50 border-amber-600/70 text-amber-300 focus:border-amber-400 focus:ring-2 focus:ring-amber-400'
+                                        : 'bg-slate-950 border-slate-800 text-slate-400 placeholder:text-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500'
+                                    } ${isCellActive ? 'ring-2 ring-indigo-400 border-indigo-400 shadow-lg scale-105 z-10' : ''} focus:outline-none`}
                                   />
                                 ) : (
                                   <span

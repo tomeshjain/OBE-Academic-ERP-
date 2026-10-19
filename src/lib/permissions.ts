@@ -92,9 +92,7 @@ export function getVisibleMenuItemsForRole(role?: UserRole | null): MenuItemId[]
     case 'TENANT_ADMIN':
       return [
         'org-structure',
-        'regulations',
         'programs-outcomes',
-        'terms',
         'courses',
         'scoring-components',
         'assessment-papers',
@@ -105,7 +103,6 @@ export function getVisibleMenuItemsForRole(role?: UserRole | null): MenuItemId[]
       return [
         'org-structure',
         'programs-outcomes',
-        'terms',
         'courses',
         'scoring-components',
         'assessment-papers',
