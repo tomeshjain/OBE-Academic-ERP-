@@ -187,6 +187,10 @@ export const OrganizationStructureView: React.FC = () => {
   };
 
   const openEditFaculty = (f: AcademicFaculty) => {
+    if (!academicScope.canEditFaculty) {
+      showMsg('Access Restricted: Only Institutional Administrators can edit Faculty details.', 'error');
+      return;
+    }
     setCode(f.code);
     setName(f.name);
     setSelectedHeadUserId(f.headUserId || '');
@@ -201,8 +205,8 @@ export const OrganizationStructureView: React.FC = () => {
     }
     setCode(`SCH-${schools.length + 1}-2026`);
     setName('');
-    const defaultFacId = academicScope.isHeadOfFaculty && academicScope.ledFaculty
-      ? academicScope.ledFaculty.id
+    const defaultFacId = academicScope.isHeadOfFaculty && academicScope.ledFaculties.length > 0
+      ? academicScope.ledFaculties[0].id
       : (academicScope.visibleFaculties[0]?.id || faculties[0]?.id || '');
     setParentFacultyId(defaultFacId);
     setSelectedHeadUserId('');
@@ -211,6 +215,10 @@ export const OrganizationStructureView: React.FC = () => {
   };
 
   const openEditSchool = (s: AcademicSchool) => {
+    if (!academicScope.canEditSchool) {
+      showMsg('Access Restricted: Only Institutional Administrators or Head of Faculty can edit School details.', 'error');
+      return;
+    }
     setCode(s.code);
     setName(s.name);
     setParentFacultyId(s.facultyId);
@@ -226,8 +234,8 @@ export const OrganizationStructureView: React.FC = () => {
     }
     setCode(`DEPT-${departments.length + 1}-2026`);
     setName('');
-    const defaultSchoolId = academicScope.isHeadOfSchool && academicScope.ledSchool
-      ? academicScope.ledSchool.id
+    const defaultSchoolId = academicScope.isHeadOfSchool && academicScope.ledSchools.length > 0
+      ? academicScope.ledSchools[0].id
       : (academicScope.visibleSchools[0]?.id || schools[0]?.id || 'school-default');
     setParentSchoolId(defaultSchoolId);
     setSelectedHeadUserId('');
@@ -236,6 +244,10 @@ export const OrganizationStructureView: React.FC = () => {
   };
 
   const openEditDept = (d: AcademicDepartment) => {
+    if (!academicScope.canEditDepartment) {
+      showMsg('Access Restricted: Only Administrators, Head of Faculty, or Head of School can edit Department details.', 'error');
+      return;
+    }
     setCode(d.code);
     setName(d.name);
     setParentSchoolId(d.schoolId);
@@ -260,6 +272,10 @@ export const OrganizationStructureView: React.FC = () => {
   };
 
   const openEditUser = (u: UserAccount) => {
+    if (!academicScope.isAdmin && u.id !== currentUser?.id) {
+      showMsg('Access Restricted: Non-admin users can only view or edit their own profile.', 'error');
+      return;
+    }
     setUserFullName(u.fullName);
     setUserEmail(u.email);
     setUserRole(u.role);
@@ -292,6 +308,10 @@ export const OrganizationStructureView: React.FC = () => {
       addFaculty(code.trim().toUpperCase(), name.trim(), assignedUser?.id, assignedUser?.fullName);
       showMsg(`Faculty ${code.trim().toUpperCase()} registered with assigned Head.`);
     } else if (editingId) {
+      if (!academicScope.canEditFaculty) {
+        showMsg('Access Restricted: Only Institutional Administrators can update Faculty details.', 'error');
+        return;
+      }
       const existingFaculty = faculties.find((f) => f.id === editingId);
       // Security: Only Institutional Administrator can appoint or replace the Head of Faculty.
       // An HoF cannot replace themselves or designate a new HoF!
@@ -326,6 +346,10 @@ export const OrganizationStructureView: React.FC = () => {
       addSchool(parentFacultyId, code.trim().toUpperCase(), name.trim(), assignedUser?.id, assignedUser?.fullName);
       showMsg(`School ${code.trim().toUpperCase()} registered with assigned Head.`);
     } else if (editingId) {
+      if (!academicScope.canEditSchool) {
+        showMsg('Access Restricted: Only Administrators or Head of Faculty can update School details.', 'error');
+        return;
+      }
       const existingSchool = schools.find((s) => s.id === editingId);
       // Security: Only Administrator or Head of Faculty can appoint or replace the Head of School.
       // A Head of School cannot replace themselves or assign someone else as HoS!
@@ -361,6 +385,10 @@ export const OrganizationStructureView: React.FC = () => {
       addDepartment(parentSchoolId, code.trim().toUpperCase(), name.trim(), assignedUser?.id, assignedUser?.fullName);
       showMsg(`Department ${code.trim().toUpperCase()} registered with assigned HOD.`);
     } else if (editingId) {
+      if (!academicScope.canEditDepartment) {
+        showMsg('Access Restricted: Only Administrators, Head of Faculty, or Head of School can update Department details.', 'error');
+        return;
+      }
       const existingDept = departments.find((d) => d.id === editingId);
       // Security: Only Administrator, Head of Faculty, or Head of School can appoint or replace the HOD.
       // A Head of Department cannot replace themselves or assign someone else as HOD!
@@ -425,43 +453,17 @@ export const OrganizationStructureView: React.FC = () => {
       const targetUser = users.find((u) => u.id === editingId);
       if (!targetUser) return;
 
+      if (!academicScope.isAdmin && editingId !== currentUser?.id) {
+        showMsg('Access Restricted: Only Administrators can modify other user accounts.', 'error');
+        return;
+      }
+
       let finalRole = targetUser.role;
-      // Guard 1: User cannot edit their own institutional role
-      if (editingId === currentUser?.id) {
-        if (userRole !== targetUser.role) {
-          showMsg('Governance Policy: You cannot modify your own institutional role.', 'error');
-          return;
-        }
-        finalRole = targetUser.role;
-      } else if (!academicScope.isAdmin) {
-        // Guard 2: Non-admins cannot edit an account at or above their level
-        const roleRank: Record<UserRole, number> = {
-          SUPER_ADMIN: 100,
-          TENANT_ADMIN: 90,
-          HEAD_OF_FACULTY: 80,
-          DEAN: 75,
-          HEAD_OF_SCHOOL: 70,
-          HOD: 60,
-          COURSE_COORDINATOR: 50,
-          COURSE_FACULTY: 40,
-          STUDENT: 10,
-        };
-        const myRank = roleRank[currentUser?.role || 'COURSE_FACULTY'] || 0;
-        const targetRank = roleRank[targetUser.role] || 0;
-
-        if (targetRank >= myRank) {
-          showMsg('Access Restricted: You cannot modify an account at or above your leadership tier.', 'error');
-          return;
-        }
-
-        // Guard 3: Role must be in assignable roles
-        if (!academicScope.assignableRoles.includes(userRole)) {
-          showMsg(`Access Restricted: You cannot assign the role "${userRole}".`, 'error');
-          return;
-        }
+      if (academicScope.canEditUserRole) {
         finalRole = userRole;
-      } else {
-        finalRole = userRole;
+      } else if (userRole !== targetUser.role) {
+        showMsg('Governance Policy: Modifying institutional roles is strictly reserved for Administrators.', 'error');
+        return;
       }
 
       updateUser(editingId, {
@@ -469,7 +471,7 @@ export const OrganizationStructureView: React.FC = () => {
         role: finalRole,
         department: sanitizeInput(userDepartment).trim(),
       });
-      showMsg(`Account details and role updated for ${userFullName}.`);
+      showMsg(`Account details updated for ${userFullName}.`);
     }
     closeModal();
   };
@@ -508,30 +510,32 @@ export const OrganizationStructureView: React.FC = () => {
 
     // Jurisdictional hierarchy filtering
     if (!academicScope.isAdmin) {
-      if (academicScope.isHeadOfFaculty && academicScope.ledFaculty) {
-        // HoF: Sees accounts under their faculty's departments, plus themselves. Cannot see Tenant/Super Admin.
-        const facultySchoolIds = new Set(schools.filter((s) => s.facultyId === academicScope.ledFaculty?.id).map((s) => s.id));
+      if (academicScope.isHeadOfFaculty && academicScope.ledFaculties.length > 0) {
+        // HoF: Sees accounts under ALL their faculties' departments, plus themselves. Cannot see Tenant/Super Admin.
+        const ledFacultyIds = new Set(academicScope.ledFaculties.map((f) => f.id));
+        const facultySchoolIds = new Set(schools.filter((s) => s.facultyId && ledFacultyIds.has(s.facultyId)).map((s) => s.id));
         const facultyDeptNames = new Set(departments.filter((d) => facultySchoolIds.has(d.schoolId)).map((d) => d.name));
         list = list.filter((u) => {
           if (u.role === 'SUPER_ADMIN' || u.role === 'TENANT_ADMIN') return false;
           if (u.id === currentUser?.id) return true;
           return u.department && facultyDeptNames.has(u.department);
         });
-      } else if (academicScope.isHeadOfSchool && academicScope.ledSchool) {
-        // HoS: Sees accounts under their school's departments, plus themselves.
-        const schoolDeptNames = new Set(departments.filter((d) => d.schoolId === academicScope.ledSchool?.id).map((d) => d.name));
+      } else if (academicScope.isHeadOfSchool && academicScope.ledSchools.length > 0) {
+        // HoS: Sees accounts under ALL their schools' departments, plus themselves.
+        const ledSchoolIds = new Set(academicScope.ledSchools.map((s) => s.id));
+        const schoolDeptNames = new Set(departments.filter((d) => ledSchoolIds.has(d.schoolId)).map((d) => d.name));
         list = list.filter((u) => {
           if (u.role === 'SUPER_ADMIN' || u.role === 'TENANT_ADMIN' || u.role === 'HEAD_OF_FACULTY') return false;
           if (u.id === currentUser?.id) return true;
           return u.department && schoolDeptNames.has(u.department);
         });
-      } else if (academicScope.isHod && academicScope.ledDepartment) {
-        // HoD: Sees accounts under their department only, plus themselves.
-        const myDeptName = academicScope.ledDepartment.name;
+      } else if (academicScope.isHod && academicScope.ledDepartments.length > 0) {
+        // HoD: Sees accounts under ALL their departments, plus themselves.
+        const myDeptNames = new Set(academicScope.ledDepartments.map((d) => d.name));
         list = list.filter((u) => {
           if (u.role === 'SUPER_ADMIN' || u.role === 'TENANT_ADMIN' || u.role === 'HEAD_OF_FACULTY' || u.role === 'HEAD_OF_SCHOOL') return false;
           if (u.id === currentUser?.id) return true;
-          return u.department === myDeptName;
+          return u.department && myDeptNames.has(u.department);
         });
       } else {
         // Regular faculty / coordinator: can only see themselves or departmental colleagues
@@ -600,28 +604,27 @@ export const OrganizationStructureView: React.FC = () => {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
-      {/* Module Header */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-xl backdrop-blur-sm">
+    <div className="space-y-6 w-full">
+      {/* Header Banner - Space Optimized & Integrated */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-indigo-400 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800">
-                Module 1
-              </span>
-              <span className="text-xs text-slate-500">&bull; Academic Year 2026–2027</span>
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-400 uppercase tracking-wider mb-0.5">
+              <span>Institutional Architecture &amp; Gateway</span>
+              <span>&bull;</span>
+              <span>Academic Year 2026–2027</span>
             </div>
-            <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-              <Building2 className="w-6 h-6 text-indigo-400" />
-              <span>Organization Structure, Roles & Gateway</span>
+            <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-indigo-400" />
+              <span>Organization Structure, Roles &amp; Gateway</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-400 mt-0.5">
               Define Faculties, Schools, Departments, assigned Leadership Heads, User Accounts with OTP setup, and SMTP configuration.
             </p>
           </div>
 
-          {/* Sub-Tab Navigation */}
-          <div className="flex items-center flex-wrap gap-1.5 bg-slate-950 border border-slate-800 p-1.5 rounded-2xl text-xs font-medium">
+          {/* Sub-menu Tabs */}
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium self-start md:self-auto flex-wrap gap-1 shrink-0">
             <button
               onClick={() => switchSubTab('faculties')}
               className={`px-3 py-1.5 rounded-xl transition-all ${
@@ -630,7 +633,7 @@ export const OrganizationStructureView: React.FC = () => {
                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              Faculties ({faculties.length})
+              Faculties ({academicScope.visibleFaculties.length})
             </button>
             <button
               onClick={() => switchSubTab('schools')}
@@ -640,7 +643,7 @@ export const OrganizationStructureView: React.FC = () => {
                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              Schools ({schools.length})
+              Schools ({academicScope.visibleSchools.length})
             </button>
             <button
               onClick={() => switchSubTab('departments')}
@@ -650,7 +653,7 @@ export const OrganizationStructureView: React.FC = () => {
                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              Departments ({departments.length})
+              Departments ({academicScope.visibleDepartments.length})
             </button>
             <button
               onClick={() => switchSubTab('users')}
@@ -741,14 +744,17 @@ export const OrganizationStructureView: React.FC = () => {
           </div>
 
           {/* Head of Faculty Scoped Governance Notice */}
-          {academicScope.isHeadOfFaculty && academicScope.ledFaculty && (
+          {academicScope.isHeadOfFaculty && academicScope.ledFaculties.length > 0 && (
             <div className="bg-teal-950/40 border border-teal-800/80 rounded-2xl p-4 flex items-center justify-between text-xs text-teal-200">
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className="w-5 h-5 text-teal-400 shrink-0" />
                 <div>
-                  <span className="font-bold text-white">Governed Faculty: {academicScope.ledFaculty.name} ({academicScope.ledFaculty.code})</span>
+                  <span className="font-bold text-white">
+                    {academicScope.ledFaculties.length > 1 ? 'Governed Faculties: ' : 'Governed Faculty: '}
+                    {academicScope.ledFaculties.map((f) => `${f.name} (${f.code})`).join(' • ')}
+                  </span>
                   <p className="text-teal-300/90 text-[11px] mt-0.5">
-                    As Head of Faculty, you have full administrative governance over all schools, departments, and programs within your faculty. Creating new Faculties is restricted to the Tenant Administrator.
+                    As Head of Faculty, you have full administrative governance over all schools, departments, and programs within your {academicScope.ledFaculties.length > 1 ? 'governed faculties' : 'faculty'}. Creating new Faculties is restricted to the Tenant Administrator.
                   </p>
                 </div>
               </div>
@@ -779,21 +785,30 @@ export const OrganizationStructureView: React.FC = () => {
                         {f.code}
                       </span>
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEditFaculty(f)}
-                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                          title="Edit details"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        {f.headUserId === currentUser?.id || (academicScope.isHeadOfFaculty && academicScope.ledFaculty?.id === f.id) ? (
+                        {academicScope.canEditFaculty ? (
+                          <button
+                            onClick={() => openEditFaculty(f)}
+                            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                            title="Edit details"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <span
+                            className="p-1 text-slate-600 flex items-center"
+                            title="Faculty governance is restricted to Institutional Administrator."
+                          >
+                            <Lock className="w-3.5 h-3.5 text-slate-600" />
+                          </span>
+                        )}
+                        {f.headUserId === currentUser?.id || (academicScope.isHeadOfFaculty && academicScope.ledFaculties.some((lf) => lf.id === f.id)) ? (
                           <span
                             className="p-1 text-slate-500 cursor-not-allowed flex items-center"
                             title="Protected Leadership Entity: A Head of Faculty cannot delete their own Faculty."
                           >
                             <Lock className="w-3.5 h-3.5 text-slate-500" />
                           </span>
-                        ) : academicScope.canCreateFaculty ? (
+                        ) : academicScope.canDeleteFaculty ? (
                           <button
                             onClick={() => {
                               if (confirm(`Delete faculty "${f.name}"?`)) {
@@ -822,32 +837,41 @@ export const OrganizationStructureView: React.FC = () => {
                             {f.headUserName || 'Unassigned'}
                           </span>
                         </div>
-                        <select
-                          value={f.headUserId || ''}
-                          onChange={(e) => {
-                            const newUid = e.target.value;
-                            if (newUid) {
-                              const u = users.find((usr) => usr.id === newUid);
-                              setFacultyHead(f.id, newUid, u?.fullName || 'Assigned Head');
-                              showMsg(`Assigned ${u?.fullName || 'Account'} as Head of Faculty for ${f.name}`);
-                            } else {
-                              setFacultyHead(f.id, '', '');
-                              showMsg(`Unassigned Head of Faculty for ${f.name}`);
-                            }
-                          }}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-teal-500 focus:outline-none cursor-pointer"
-                        >
-                          <option value="">-- Assign Head of Faculty (HoF Required) --</option>
-                          {eligibleHoFUsers.length === 0 ? (
-                            <option disabled value="">No HoF accounts registered</option>
-                          ) : (
-                            eligibleHoFUsers.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.fullName} ({u.role === 'HEAD_OF_FACULTY' ? 'HoF' : 'Admin'})
-                              </option>
-                            ))
-                          )}
-                        </select>
+                        {academicScope.canAssignFacultyHead ? (
+                          <select
+                            value={f.headUserId || ''}
+                            onChange={(e) => {
+                              const newUid = e.target.value;
+                              if (newUid) {
+                                const u = users.find((usr) => usr.id === newUid);
+                                setFacultyHead(f.id, newUid, u?.fullName || 'Assigned Head');
+                                showMsg(`Assigned ${u?.fullName || 'Account'} as Head of Faculty for ${f.name}`);
+                              } else {
+                                setFacultyHead(f.id, '', '');
+                                showMsg(`Unassigned Head of Faculty for ${f.name}`);
+                              }
+                            }}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-teal-500 focus:outline-none cursor-pointer"
+                          >
+                            <option value="">-- Assign Head of Faculty (HoF Required) --</option>
+                            {eligibleHoFUsers.length === 0 ? (
+                              <option disabled value="">No HoF accounts registered</option>
+                            ) : (
+                              eligibleHoFUsers.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.fullName} ({u.role === 'HEAD_OF_FACULTY' ? 'HoF' : 'Admin'})
+                                </option>
+                              ))
+                            )}
+                          </select>
+                        ) : (
+                          <div className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 flex items-center justify-between">
+                            <span className="font-medium text-slate-200">{f.headUserName || 'Unassigned'}</span>
+                            <span className="text-[10px] bg-teal-950/80 text-teal-400 border border-teal-800/80 px-2 py-0.5 rounded font-mono flex items-center gap-1">
+                              <Lock className="w-2.5 h-2.5" /> Governed by Admin
+                            </span>
+                          </div>
+                        )}
                         <span className="text-[10px] text-teal-400/80 block">
                           Role Policy: Only HoF accounts can head a Faculty. Faculty accounts are restricted.
                         </span>
@@ -897,14 +921,17 @@ export const OrganizationStructureView: React.FC = () => {
           </div>
 
           {/* Head of School Scoped Governance Notice */}
-          {academicScope.isHeadOfSchool && academicScope.ledSchool && (
+          {academicScope.isHeadOfSchool && academicScope.ledSchools.length > 0 && (
             <div className="bg-indigo-950/40 border border-indigo-800/80 rounded-2xl p-4 flex items-center justify-between text-xs text-indigo-200">
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0" />
                 <div>
-                  <span className="font-bold text-white">Governed School: {academicScope.ledSchool.name} ({academicScope.ledSchool.code})</span>
+                  <span className="font-bold text-white">
+                    {academicScope.ledSchools.length > 1 ? 'Governed Schools: ' : 'Governed School: '}
+                    {academicScope.ledSchools.map((s) => `${s.name} (${s.code})`).join(' • ')}
+                  </span>
                   <p className="text-indigo-300/90 text-[11px] mt-0.5">
-                    As Head of School, you have full governance over all academic departments and programs under your school. Creating new Schools is handled by your Head of Faculty or Administrator.
+                    As Head of School, you have full governance over all academic departments and programs under your {academicScope.ledSchools.length > 1 ? 'governed schools' : 'school'}. Creating new Schools is handled by your Head of Faculty or Administrator.
                   </p>
                 </div>
               </div>
@@ -936,21 +963,30 @@ export const OrganizationStructureView: React.FC = () => {
                         {s.code}
                       </span>
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEditSchool(s)}
-                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                          title="Edit details"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        {s.headUserId === currentUser?.id || (academicScope.isHeadOfSchool && academicScope.ledSchool?.id === s.id) ? (
+                        {academicScope.canEditSchool ? (
+                          <button
+                            onClick={() => openEditSchool(s)}
+                            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                            title="Edit details"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <span
+                            className="p-1 text-slate-600 flex items-center"
+                            title="School governance is restricted to Administrator or Head of Faculty."
+                          >
+                            <Lock className="w-3.5 h-3.5 text-slate-600" />
+                          </span>
+                        )}
+                        {s.headUserId === currentUser?.id || (academicScope.isHeadOfSchool && academicScope.ledSchools.some((ls) => ls.id === s.id)) ? (
                           <span
                             className="p-1 text-slate-500 cursor-not-allowed flex items-center"
                             title="Protected Leadership Entity: A Head of School cannot delete their own School."
                           >
                             <Lock className="w-3.5 h-3.5 text-slate-500" />
                           </span>
-                        ) : academicScope.canCreateSchool ? (
+                        ) : academicScope.canDeleteSchool ? (
                           <button
                             onClick={() => {
                               if (confirm(`Delete school "${s.name}"?`)) {
@@ -982,34 +1018,45 @@ export const OrganizationStructureView: React.FC = () => {
                             {s.headUserName || 'Unassigned'}
                           </span>
                         </div>
-                        <select
-                          value={s.headUserId || ''}
-                          onChange={(e) => {
-                            const newUid = e.target.value;
-                            if (newUid) {
-                              const u = users.find((usr) => usr.id === newUid);
-                              setSchoolHead(s.id, newUid, u?.fullName || 'Assigned Head');
-                              showMsg(`Assigned ${u?.fullName || 'Account'} as Head of School for ${s.name}`);
-                            } else {
-                              setSchoolHead(s.id, '', '');
-                              showMsg(`Unassigned Head of School for ${s.name}`);
-                            }
-                          }}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
-                        >
-                          <option value="">-- Assign Head of School (HoS Required) --</option>
-                          {eligibleHoSUsers.length === 0 ? (
-                            <option disabled value="">No HoS accounts registered</option>
-                          ) : (
-                            eligibleHoSUsers.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.fullName} ({u.role === 'HEAD_OF_SCHOOL' ? 'HoS' : 'Admin'})
-                              </option>
-                            ))
-                          )}
-                        </select>
+                        {(academicScope.isAdmin || academicScope.isHeadOfFaculty) ? (
+                          <select
+                            value={s.headUserId || ''}
+                            onChange={(e) => {
+                              const newUid = e.target.value;
+                              if (newUid) {
+                                const u = users.find((usr) => usr.id === newUid);
+                                setSchoolHead(s.id, newUid, u?.fullName || 'Assigned Head');
+                                showMsg(`Assigned ${u?.fullName || 'Account'} as Head of School for ${s.name}`);
+                              } else {
+                                setSchoolHead(s.id, '', '');
+                                showMsg(`Unassigned Head of School for ${s.name}`);
+                              }
+                            }}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
+                          >
+                            <option value="">-- Assign Head of School (HoS Required) --</option>
+                            {eligibleHoSUsers.length === 0 ? (
+                              <option disabled value="">No HoS accounts registered</option>
+                            ) : (
+                              eligibleHoSUsers.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.fullName} ({u.role === 'HEAD_OF_SCHOOL' ? 'HoS' : 'Admin'})
+                                </option>
+                              ))
+                            )}
+                          </select>
+                        ) : (
+                          <div className="w-full bg-slate-950/80 border border-slate-800/80 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 flex items-center justify-between">
+                            <span className="font-semibold text-white">{s.headUserName || 'Unassigned Head of School'}</span>
+                            <span className="text-[10px] bg-indigo-950 text-indigo-400 border border-indigo-800/80 px-2 py-0.5 rounded font-mono">
+                              Governed by HoF / Admin
+                            </span>
+                          </div>
+                        )}
                         <span className="text-[10px] text-indigo-400/80 block">
-                          Role Policy: Only HoS accounts can head a School. Faculty accounts are restricted.
+                          {(academicScope.isAdmin || academicScope.isHeadOfFaculty)
+                            ? "Role Policy: Only HoS accounts can head a School. Faculty accounts are restricted."
+                            : "Governance Policy: A Head of School cannot replace himself. Reassignment requires HoF or Admin authority."}
                         </span>
                       </div>
                     </div>
@@ -1057,14 +1104,17 @@ export const OrganizationStructureView: React.FC = () => {
           </div>
 
           {/* HOD Scoped Governance Notice */}
-          {academicScope.isHod && academicScope.ledDepartment && (
+          {academicScope.isHod && academicScope.ledDepartments.length > 0 && (
             <div className="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-4 flex items-center justify-between text-xs text-amber-200">
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
                 <div>
-                  <span className="font-bold text-white">Governed Department: {academicScope.ledDepartment.name} ({academicScope.ledDepartment.code})</span>
+                  <span className="font-bold text-white">
+                    {academicScope.ledDepartments.length > 1 ? 'Governed Departments: ' : 'Governed Department: '}
+                    {academicScope.ledDepartments.map((d) => `${d.name} (${d.code})`).join(' • ')}
+                  </span>
                   <p className="text-amber-300/90 text-[11px] mt-0.5">
-                    As Head of Department (HOD), you have full authority over degree programs, courses, section allocation, and mark deadlines within your department. Creating new Departments is managed by your Head of School.
+                    As Head of Department (HOD), you have full authority over degree programs, courses, section allocation, and mark deadlines within your {academicScope.ledDepartments.length > 1 ? 'governed departments' : 'department'}. Creating new Departments is managed by your Head of School.
                   </p>
                 </div>
               </div>
@@ -1095,21 +1145,30 @@ export const OrganizationStructureView: React.FC = () => {
                         {d.code}
                       </span>
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEditDept(d)}
-                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                          title="Edit details"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        {d.headUserId === currentUser?.id || (academicScope.isHod && academicScope.ledDepartment?.id === d.id) ? (
+                        {academicScope.canEditDepartment ? (
+                          <button
+                            onClick={() => openEditDept(d)}
+                            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                            title="Edit details"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <span
+                            className="p-1 text-slate-600 flex items-center"
+                            title="Department governance is restricted to Administrator, HoF, or HoS."
+                          >
+                            <Lock className="w-3.5 h-3.5 text-slate-600" />
+                          </span>
+                        )}
+                        {d.headUserId === currentUser?.id || (academicScope.isHod && academicScope.ledDepartments.some((ld) => ld.id === d.id)) ? (
                           <span
                             className="p-1 text-slate-500 cursor-not-allowed flex items-center"
                             title="Protected Leadership Entity: A Head of Department cannot delete their own Department."
                           >
                             <Lock className="w-3.5 h-3.5 text-slate-500" />
                           </span>
-                        ) : academicScope.canCreateDepartment ? (
+                        ) : academicScope.canDeleteDepartment ? (
                           <button
                             onClick={() => {
                               if (confirm(`Delete department "${d.name}"?`)) {
@@ -1141,34 +1200,45 @@ export const OrganizationStructureView: React.FC = () => {
                             {d.headUserName || 'Unassigned'}
                           </span>
                         </div>
-                        <select
-                          value={d.headUserId || ''}
-                          onChange={(e) => {
-                            const newUid = e.target.value;
-                            if (newUid) {
-                              const u = users.find((usr) => usr.id === newUid);
-                              setDepartmentHead(d.id, newUid, u?.fullName || 'Assigned HOD');
-                              showMsg(`Assigned ${u?.fullName || 'Account'} as HOD for ${d.name}`);
-                            } else {
-                              setDepartmentHead(d.id, '', '');
-                              showMsg(`Unassigned HOD for ${d.name}`);
-                            }
-                          }}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-amber-500 focus:outline-none cursor-pointer"
-                        >
-                          <option value="">-- Assign Head of Department (HoD Required) --</option>
-                          {eligibleHodUsers.length === 0 ? (
-                            <option disabled value="">No HoD accounts registered</option>
-                          ) : (
-                            eligibleHodUsers.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.fullName} ({u.role === 'HOD' ? 'HoD' : 'Admin'})
-                              </option>
-                            ))
-                          )}
-                        </select>
+                        {(academicScope.isAdmin || academicScope.isHeadOfFaculty || academicScope.isHeadOfSchool) ? (
+                          <select
+                            value={d.headUserId || ''}
+                            onChange={(e) => {
+                              const newUid = e.target.value;
+                              if (newUid) {
+                                const u = users.find((usr) => usr.id === newUid);
+                                setDepartmentHead(d.id, newUid, u?.fullName || 'Assigned HOD');
+                                showMsg(`Assigned ${u?.fullName || 'Account'} as HOD for ${d.name}`);
+                              } else {
+                                setDepartmentHead(d.id, '', '');
+                                showMsg(`Unassigned HOD for ${d.name}`);
+                              }
+                            }}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-amber-500 focus:outline-none cursor-pointer"
+                          >
+                            <option value="">-- Assign Head of Department (HoD Required) --</option>
+                            {eligibleHodUsers.length === 0 ? (
+                              <option disabled value="">No HoD accounts registered</option>
+                            ) : (
+                              eligibleHodUsers.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.fullName} ({u.role === 'HOD' ? 'HoD' : 'Admin'})
+                                </option>
+                              ))
+                            )}
+                          </select>
+                        ) : (
+                          <div className="w-full bg-slate-950/80 border border-slate-800/80 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 flex items-center justify-between">
+                            <span className="font-semibold text-white">{d.headUserName || 'Unassigned Head of Department'}</span>
+                            <span className="text-[10px] bg-amber-950 text-amber-400 border border-amber-800/80 px-2 py-0.5 rounded font-mono">
+                              Governed by HoS / HoF / Admin
+                            </span>
+                          </div>
+                        )}
                         <span className="text-[10px] text-amber-400/80 block">
-                          Role Policy: Only HoD accounts can head a Department. Faculty accounts are restricted.
+                          {(academicScope.isAdmin || academicScope.isHeadOfFaculty || academicScope.isHeadOfSchool)
+                            ? "Role Policy: Only HoD accounts can head a Department. Faculty accounts are restricted."
+                            : "Governance Policy: A Head of Department cannot replace himself. Reassignment requires HoS, HoF, or Admin authority."}
                         </span>
                       </div>
                     </div>
@@ -1222,14 +1292,14 @@ export const OrganizationStructureView: React.FC = () => {
           </div>
 
           {/* Pending Account Approvals Section (Admin Approval Required) */}
-          {users.some((u) => u.approvalStatus === 'PENDING') && (
+          {filteredUsers.some((u) => u.approvalStatus === 'PENDING') && (
             <div className="bg-amber-950/20 border border-amber-800/60 rounded-2xl p-4 shadow-xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
                   <Clock className="w-5 h-5 text-amber-400 shrink-0" />
                   <div>
                     <h3 className="font-bold text-sm text-amber-300">
-                      Pending Account Approvals ({users.filter((u) => u.approvalStatus === 'PENDING').length})
+                      Pending Account Approvals ({filteredUsers.filter((u) => u.approvalStatus === 'PENDING').length})
                     </h3>
                     <p className="text-[11px] text-slate-400">
                       Accounts created by Unit Heads (HoF, HoS, HoD) require Institutional Administrator authorization before activation.
@@ -1253,7 +1323,7 @@ export const OrganizationStructureView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {users
+                    {filteredUsers
                       .filter((u) => u.approvalStatus === 'PENDING')
                       .map((pu) => (
                         <tr key={pu.id} className="hover:bg-slate-900/40 transition-colors">
@@ -1329,7 +1399,7 @@ export const OrganizationStructureView: React.FC = () => {
                 onChange={(e) => setSelectedRoleFilter(e.target.value)}
                 className="bg-slate-950 border border-slate-800 text-white font-medium rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 text-xs cursor-pointer"
               >
-                <option value="ALL">All Roles ({users.length})</option>
+                <option value="ALL">All Roles ({filteredUsers.length})</option>
                 <option value="TENANT_ADMIN">Institutional Admin</option>
                 <option value="HEAD_OF_FACULTY">Head of Faculty</option>
                 <option value="HEAD_OF_SCHOOL">Head of School</option>
@@ -1414,21 +1484,9 @@ export const OrganizationStructureView: React.FC = () => {
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             {(() => {
-                              const roleRank: Record<UserRole, number> = {
-                                SUPER_ADMIN: 100,
-                                TENANT_ADMIN: 90,
-                                HEAD_OF_FACULTY: 80,
-                                DEAN: 75,
-                                HEAD_OF_SCHOOL: 70,
-                                HOD: 60,
-                                COURSE_COORDINATOR: 50,
-                                COURSE_FACULTY: 40,
-                                STUDENT: 10,
-                              };
-                              const myRank = (currentUser?.role ? roleRank[currentUser.role as UserRole] : 0) || 0;
-                              const targetRank = (u.role ? roleRank[u.role as UserRole] : 0) || 0;
                               const isSelf = u.id === currentUser?.id;
-                              const canAdminTarget = academicScope.isAdmin || (!isSelf && myRank > targetRank);
+                              const canEditThisUser = isSelf || academicScope.isAdmin;
+                              const canDeleteThisUser = academicScope.canDeleteUser && !isSelf;
 
                               return (
                                 <>
@@ -1452,19 +1510,19 @@ export const OrganizationStructureView: React.FC = () => {
                                     </button>
                                   )}
 
-                                  {/* Edit Role / Profile Button */}
-                                  {(isSelf || canAdminTarget) && (
+                                  {/* Edit Role / Profile Button: Self can edit profile, Admin can edit any */}
+                                  {canEditThisUser && (
                                     <button
                                       onClick={() => openEditUser(u)}
                                       className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                                      title={isSelf ? 'Edit Your Profile Details' : 'Edit User Role / Details'}
+                                      title={isSelf ? 'Edit Your Profile Details' : 'Edit User Account (Admin Only)'}
                                     >
                                       <Edit2 className="w-3.5 h-3.5" />
                                     </button>
                                   )}
 
-                                  {/* Delete User Button: cannot delete self, cannot delete superior or peer */}
-                                  {!isSelf && canAdminTarget && (
+                                  {/* Delete User Button: Strictly Institutional Administrator Only */}
+                                  {canDeleteThisUser && (
                                     <button
                                       onClick={() => {
                                         if (confirm(`Permanently delete account "${u.fullName}" (${u.email})?`)) {
@@ -1473,10 +1531,20 @@ export const OrganizationStructureView: React.FC = () => {
                                         }
                                       }}
                                       className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                                      title="Delete Account"
+                                      title="Delete Account (Admin Only)"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
+                                  )}
+
+                                  {!canEditThisUser && !canDeleteThisUser && !academicScope.isAdmin && (
+                                    <span
+                                      className="text-[10px] text-slate-500 flex items-center gap-1 font-mono px-1 py-0.5"
+                                      title="Account is governed by Institutional Administrator"
+                                    >
+                                      <Lock className="w-3 h-3 text-slate-600" />
+                                      <span>Governed</span>
+                                    </span>
                                   )}
                                 </>
                               );
@@ -1732,7 +1800,7 @@ export const OrganizationStructureView: React.FC = () => {
 
       {/* SUB-TAB 6: VISUAL HIERARCHY TREE */}
       {subTab === 'tree' && (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm space-y-6">
           <div>
             <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
               <Network className="w-5 h-5 text-indigo-400" />
@@ -1755,14 +1823,14 @@ export const OrganizationStructureView: React.FC = () => {
             </div>
           </div>
 
-          {faculties.length === 0 ? (
+          {academicScope.visibleFaculties.length === 0 ? (
             <div className="text-center py-10 text-xs text-slate-500">
-              No faculties defined. Register faculties under the "1. Faculties" tab above.
+              No faculties defined in your scope.
             </div>
           ) : (
             <div className="space-y-4 pl-4 border-l-2 border-slate-800">
-              {faculties.map((f) => {
-                const childSchools = schools.filter((s) => s.facultyId === f.id);
+              {academicScope.visibleFaculties.map((f) => {
+                const childSchools = academicScope.visibleSchools.filter((s) => s.facultyId === f.id);
                 return (
                   <div key={f.id} className="space-y-3">
                     <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex items-center justify-between text-xs">
@@ -1782,7 +1850,7 @@ export const OrganizationStructureView: React.FC = () => {
                         <div className="text-[11px] text-slate-500 italic">No schools under this faculty.</div>
                       ) : (
                         childSchools.map((s) => {
-                          const childDepts = departments.filter((d) => d.schoolId === s.id);
+                          const childDepts = academicScope.visibleDepartments.filter((d) => d.schoolId === s.id);
                           return (
                             <div key={s.id} className="space-y-2">
                               <div className="bg-slate-900/50 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between text-xs">
@@ -1954,9 +2022,9 @@ export const OrganizationStructureView: React.FC = () => {
             <form onSubmit={handleSaveSchool} className="p-5 space-y-4 text-xs">
               <div>
                 <label className="font-semibold text-slate-300 block mb-1">Parent Faculty *</label>
-                {academicScope.isHeadOfFaculty && academicScope.ledFaculty ? (
+                {academicScope.isHeadOfFaculty && academicScope.ledFaculties.length === 1 ? (
                   <div className="w-full bg-slate-950/80 border border-teal-800/60 rounded-xl px-3 py-2 text-teal-300 flex items-center justify-between">
-                    <span>{academicScope.ledFaculty.code} - {academicScope.ledFaculty.name}</span>
+                    <span>{academicScope.ledFaculties[0].code} - {academicScope.ledFaculties[0].name}</span>
                     <span className="text-[10px] bg-teal-950 px-2 py-0.5 rounded border border-teal-800 font-mono text-teal-400">Your Governed Faculty</span>
                   </div>
                 ) : (
@@ -1966,7 +2034,10 @@ export const OrganizationStructureView: React.FC = () => {
                     required
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
                   >
-                    {academicScope.visibleFaculties.map((f) => (
+                    {(academicScope.isHeadOfFaculty && academicScope.ledFaculties.length > 1
+                      ? academicScope.ledFaculties
+                      : academicScope.visibleFaculties
+                    ).map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.code} - {f.name}
                       </option>
@@ -2083,9 +2154,9 @@ export const OrganizationStructureView: React.FC = () => {
             <form onSubmit={handleSaveDept} className="p-5 space-y-4 text-xs">
               <div>
                 <label className="font-semibold text-slate-300 block mb-1">Parent School *</label>
-                {academicScope.isHeadOfSchool && academicScope.ledSchool ? (
+                {academicScope.isHeadOfSchool && academicScope.ledSchools.length === 1 ? (
                   <div className="w-full bg-slate-950/80 border border-indigo-800/60 rounded-xl px-3 py-2 text-indigo-300 flex items-center justify-between">
-                    <span>{academicScope.ledSchool.code} - {academicScope.ledSchool.name}</span>
+                    <span>{academicScope.ledSchools[0].code} - {academicScope.ledSchools[0].name}</span>
                     <span className="text-[10px] bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800 font-mono text-indigo-400">Your Governed School</span>
                   </div>
                 ) : (
@@ -2098,7 +2169,10 @@ export const OrganizationStructureView: React.FC = () => {
                     {academicScope.visibleSchools.length === 0 ? (
                       <option value="school-default">General School</option>
                     ) : (
-                      academicScope.visibleSchools.map((s) => (
+                      (academicScope.isHeadOfSchool && academicScope.ledSchools.length > 1
+                        ? academicScope.ledSchools
+                        : academicScope.visibleSchools
+                      ).map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.code} - {s.name}
                         </option>
@@ -2242,11 +2316,11 @@ export const OrganizationStructureView: React.FC = () => {
 
               <div>
                 <label className="font-semibold text-slate-300 block mb-1">Institutional Role *</label>
-                {modalType === 'editUser' && editingId === currentUser?.id ? (
+                {modalType === 'editUser' && (!academicScope.canEditUserRole || editingId === currentUser?.id) ? (
                   <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 flex items-center justify-between text-xs">
-                    <span className="font-semibold">{currentUser.role.replace(/_/g, ' ')}</span>
-                    <span className="text-[10px] bg-rose-950 text-rose-300 border border-rose-800 px-2 py-0.5 rounded font-mono">
-                      Self-Role Modification Locked
+                    <span className="font-semibold">{userRole.replace(/_/g, ' ')}</span>
+                    <span className="text-[10px] bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded font-mono flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" /> Role Governance Locked (Admin Only)
                     </span>
                   </div>
                 ) : (

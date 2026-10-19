@@ -14,6 +14,7 @@ import { ScoringComponentsView } from '@/components/views/ScoringComponentsView'
 import { AssessmentQuestionsView } from '@/components/views/AssessmentQuestionsView';
 import { MarkEntryView } from '@/components/views/MarkEntryView';
 import { CourseOutcomeReportsView } from '@/components/views/CourseOutcomeReportsView';
+import { AdminDatabaseManagerView } from '@/components/views/AdminDatabaseManagerView';
 import { AppTheme } from '@/types/erp';
 import {
   Calendar,
@@ -29,6 +30,7 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
+  Database,
 } from 'lucide-react';
 
 function DashboardShell() {
@@ -44,6 +46,7 @@ function DashboardShell() {
     logout,
     activeMenuItem,
     setActiveMenuItem,
+    navigateTo,
     programs,
     activeProgramId,
     setActiveProgramId,
@@ -71,6 +74,8 @@ function DashboardShell() {
 
   const visiblePrograms = academicScope?.visiblePrograms ?? programs;
   const visibleCourses = academicScope?.visibleCourses ?? courses;
+  const activeProgramCourses = visibleCourses.filter((c) => c.programId === activeProgramId);
+  const otherCourses = visibleCourses.filter((c) => c.programId !== activeProgramId);
 
   React.useEffect(() => {
     if (visiblePrograms.length > 0 && !visiblePrograms.some((p) => p.id === activeProgramId)) {
@@ -80,9 +85,27 @@ function DashboardShell() {
 
   React.useEffect(() => {
     if (visibleCourses.length > 0 && !visibleCourses.some((c) => c.id === activeCourseId)) {
-      setActiveCourseId(visibleCourses[0].id);
+      const related = activeProgramId ? visibleCourses.filter((c) => c.programId === activeProgramId) : [];
+      setActiveCourseId(related.length > 0 ? related[0].id : visibleCourses[0].id);
     }
-  }, [visibleCourses, activeCourseId, setActiveCourseId]);
+  }, [visibleCourses, activeCourseId, activeProgramId, setActiveCourseId]);
+
+  // Two-way synchronization between Active Program and Active Course:
+  const handleProgramChange = (newProgId: string) => {
+    setActiveProgramId(newProgId);
+    const related = visibleCourses.filter((c) => c.programId === newProgId);
+    if (related.length > 0) {
+      setActiveCourseId(related[0].id);
+    }
+  };
+
+  const handleCourseChange = (newCourseId: string) => {
+    setActiveCourseId(newCourseId);
+    const matched = visibleCourses.find((c) => c.id === newCourseId);
+    if (matched?.programId) {
+      setActiveProgramId(matched.programId);
+    }
+  };
 
   // Synchronize active Course with URL query parameter so refresh preserves state
   React.useEffect(() => {
@@ -142,9 +165,9 @@ function DashboardShell() {
                 </span>
                 <select
                   value={activeProgramId || ''}
-                  onChange={(e) => setActiveProgramId(e.target.value)}
+                  onChange={(e) => handleProgramChange(e.target.value)}
                   className="bg-transparent text-white font-bold text-xs focus:outline-none cursor-pointer max-w-[150px] md:max-w-[200px] truncate"
-                  title="Global Active Academic Program"
+                  title="Global Active Academic Program (Changing auto-selects corresponding course)"
                 >
                   {visiblePrograms.map((p) => (
                     <option key={p.id} value={p.id} className="bg-slate-950 text-white">
@@ -164,15 +187,28 @@ function DashboardShell() {
                 </span>
                 <select
                   value={activeCourseId || ''}
-                  onChange={(e) => setActiveCourseId(e.target.value)}
+                  onChange={(e) => handleCourseChange(e.target.value)}
                   className="bg-transparent text-teal-200 font-bold text-xs focus:outline-none cursor-pointer max-w-[170px] md:max-w-[240px] truncate"
-                  title="Global Active Course"
+                  title="Global Active Course (Changing auto-updates active program)"
                 >
-                  {visibleCourses.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-slate-950 text-white">
-                      {c.code} - {c.title}
-                    </option>
-                  ))}
+                  {activeProgramCourses.length > 0 && (
+                    <optgroup label="Current Program Courses" className="bg-slate-950 text-teal-400 font-bold">
+                      {activeProgramCourses.map((c) => (
+                        <option key={c.id} value={c.id} className="bg-slate-950 text-white font-normal">
+                          {c.code} - {c.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {otherCourses.length > 0 && (
+                    <optgroup label="Other Available Courses" className="bg-slate-950 text-slate-400 font-bold">
+                      {otherCourses.map((c) => (
+                        <option key={c.id} value={c.id} className="bg-slate-950 text-slate-300 font-normal">
+                          {c.code} - {c.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
             </div>
@@ -223,6 +259,22 @@ function DashboardShell() {
                 <span className="hidden md:inline">Log Out</span>
               </button>
 
+              {/* Admin Database Explorer Hub */}
+              {academicScope.isAdmin && (
+                <button
+                  onClick={() => navigateTo('db-manager', 'explorer')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                    activeMenuItem === 'db-manager'
+                      ? 'bg-indigo-600 text-white border border-indigo-400'
+                      : 'bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-300 hover:text-white'
+                  }`}
+                  title="Master Database Explorer: View, Edit, Delete, Backup & Restore all 22 database tables (Administrator Only)"
+                >
+                  <Database className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="hidden md:inline">DB Hub</span>
+                </button>
+              )}
+
               {(currentUser.role === 'TENANT_ADMIN' || currentUser.role === 'SUPER_ADMIN') && (
                 <button
                   onClick={() => {
@@ -250,6 +302,7 @@ function DashboardShell() {
           {activeMenuItem === 'assessment-papers' && <AssessmentQuestionsView />}
           {activeMenuItem === 'mark-entry' && <MarkEntryView />}
           {activeMenuItem === 'co-reports' && <CourseOutcomeReportsView />}
+          {activeMenuItem === 'db-manager' && <AdminDatabaseManagerView />}
         </main>
 
         {/* Footer */}

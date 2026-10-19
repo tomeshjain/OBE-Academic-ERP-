@@ -452,6 +452,14 @@ interface AppContextType {
   }) => void;
 
   resetAllData: () => void;
+
+  // 10. Administrator Database Hub (Total DB View, Edit, Delete & Backup)
+  updateDbTableRecord: (tableName: string, recordId: string, updatedRecord: any) => void;
+  deleteDbTableRecord: (tableName: string, recordId: string) => void;
+  addDbTableRecord: (tableName: string, newRecord: any) => void;
+  clearDbTable: (tableName: string) => void;
+  exportDatabaseSnapshot: () => any;
+  importDatabaseSnapshot: (snapshot: any) => { success: boolean; message: string };
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -639,6 +647,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'assessment-papers',
     'mark-entry',
     'co-reports',
+    'db-manager',
   ];
 
   // Hydrate from localStorage and URL parameters on client mount
@@ -1136,10 +1145,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUser = (id: string, updates: Partial<UserAccount>) => {
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
+    const targetUser = users.find((u) => u.id === id);
+    const prevName = targetUser?.fullName;
+
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === id) {
+          return { ...u, ...updates };
+        }
+        return u;
+      })
+    );
+
+    // 1. Immediately sync currentUser session if the updated user is logged in
+    setCurrentUser((prev) => {
+      if (prev && prev.id === id) {
+        const updated = { ...prev, ...updates };
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('academic_erp_current_user', JSON.stringify(updated));
+          } catch {}
+        }
+        if (updates.role) {
+          setCurrentUserRole(updates.role);
+        }
+        return updated;
+      }
+      return prev;
+    });
+
+    // 2. Immediate Cascading Propagation of Full Name across all dependent entities:
+    if (updates.fullName) {
+      const newName = updates.fullName;
+
+      // Course Sections facultyName
+      setCourseSections((prev) =>
+        prev.map((s) =>
+          s.facultyId === id || (prevName && s.facultyName === prevName)
+            ? { ...s, facultyId: id, facultyName: newName }
+            : s
+        )
+      );
+
+      // Courses coordinator
+      setCourses((prev) =>
+        prev.map((c) =>
+          c.coordinatorId === id || (prevName && c.coordinator === prevName)
+            ? { ...c, coordinatorId: id, coordinator: newName }
+            : c
+        )
+      );
+
+      // Assessment Windows facultyName
+      setAssessmentWindows((prev) =>
+        prev.map((w) =>
+          w.facultyId === id || (prevName && w.facultyName === prevName)
+            ? { ...w, facultyId: id, facultyName: newName }
+            : w
+        )
+      );
+
+      // Schools headUserName
+      setSchools((prev) =>
+        prev.map((sch) =>
+          sch.headUserId === id || (prevName && sch.headUserName === prevName)
+            ? { ...sch, headUserId: id, headUserName: newName }
+            : sch
+        )
+      );
+
+      // Departments headUserName
+      setDepartments((prev) =>
+        prev.map((d) =>
+          d.headUserId === id || (prevName && d.headUserName === prevName)
+            ? { ...d, headUserId: id, headUserName: newName }
+            : d
+        )
+      );
+
+      // Faculties headUserName
+      setFaculties((prev) =>
+        prev.map((f) =>
+          f.headUserId === id || (prevName && f.headUserName === prevName)
+            ? { ...f, headUserId: id, headUserName: newName }
+            : f
+        )
+      );
+    }
   };
 
   const deleteUser = (id: string) => {
+    if (currentUser && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'TENANT_ADMIN') {
+      alert('Governance Restriction: Only System/Tenant Administrators have authority to delete user accounts.');
+      return;
+    }
     setUsers((prev) => prev.filter((u) => u.id !== id));
   };
 
@@ -1385,6 +1484,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setFacultyHead = (facultyId: string, userId: string, userName: string) => {
+    if (currentUser && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'TENANT_ADMIN') {
+      throw new Error("Governance Restriction: Only System/Tenant Administrators can assign or reassign the Head of Faculty.");
+    }
     if (userId) {
       const user = users.find((u) => u.id === userId);
       if (user && user.role === 'COURSE_FACULTY') {
@@ -1397,6 +1499,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setSchoolHead = (schoolId: string, userId: string, userName: string) => {
+    if (currentUser && (currentUser.role === 'HEAD_OF_SCHOOL' || currentUser.role === 'HOD' || currentUser.role === 'COURSE_FACULTY' || currentUser.role === 'COURSE_COORDINATOR' || currentUser.role === 'STUDENT')) {
+      throw new Error("Governance Restriction: A Head of School or lower role cannot modify or reassign the Head of School. Only an Institutional Administrator or Head of Faculty can appoint or replace a Head of School.");
+    }
     if (userId) {
       const user = users.find((u) => u.id === userId);
       if (user && user.role === 'COURSE_FACULTY') {
@@ -1409,6 +1514,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setDepartmentHead = (departmentId: string, userId: string, userName: string) => {
+    if (
+      currentUser &&
+      (currentUser.role === 'HOD' ||
+        currentUser.role === 'COURSE_FACULTY' ||
+        currentUser.role === 'COURSE_COORDINATOR' ||
+        currentUser.role === 'STUDENT')
+    ) {
+      throw new Error("Governance Restriction: A Head of Department or lower role cannot modify or reassign the Head of Department. Only an Administrator, Head of Faculty, or Head of School can appoint or replace the HOD.");
+    }
     if (userId) {
       const user = users.find((u) => u.id === userId);
       if (user && user.role === 'COURSE_FACULTY') {
@@ -1435,6 +1549,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteRegulation = (id: string) => {
+    if (currentUser && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'TENANT_ADMIN') {
+      alert('Governance Restriction: Only System/Tenant Administrators have authority to delete an Academic Regulation.');
+      return;
+    }
     setRegulations((prev) => prev.filter((r) => r.id !== id));
   };
 
@@ -1456,6 +1574,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteProgram = (id: string) => {
+    if (
+      currentUser &&
+      currentUser.role !== 'SUPER_ADMIN' &&
+      currentUser.role !== 'TENANT_ADMIN' &&
+      currentUser.role !== 'HEAD_OF_FACULTY' &&
+      currentUser.role !== 'HEAD_OF_SCHOOL'
+    ) {
+      alert('Governance Restriction: Only Institutional Administrators, Head of Faculty, or Head of School have authority to delete an Academic Program.');
+      return;
+    }
     setPrograms((prev) => prev.filter((p) => p.id !== id));
     setProgramOutcomes((prev) => prev.filter((po) => po.programId !== id));
     if (activeProgramId === id) setActiveProgramId(null);
@@ -1643,12 +1771,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteCourse = (id: string) => {
+    if (
+      currentUser &&
+      currentUser.role !== 'SUPER_ADMIN' &&
+      currentUser.role !== 'TENANT_ADMIN' &&
+      currentUser.role !== 'HEAD_OF_FACULTY' &&
+      currentUser.role !== 'HEAD_OF_SCHOOL' &&
+      currentUser.role !== 'HOD'
+    ) {
+      alert('Governance Restriction: Course Coordinators and Faculty cannot delete courses from the curriculum. Deleting a course requires HOD or higher authority.');
+      return;
+    }
     setCourses((prev) => prev.filter((c) => c.id !== id));
     setCourseSections((prev) => prev.filter((s) => s.courseId !== id));
     setCourseOutcomes((prev) => prev.filter((co) => co.courseId !== id));
     setScoringSchemes((prev) => prev.filter((s) => s.courseId !== id));
     setScoringSubComponents((prev) => prev.filter((sub) => sub.courseId !== id));
     if (activeCourseId === id) setActiveCourseId(null);
+  };
+
+  const selectCourse = (courseId: string | null) => {
+    setActiveCourseId(courseId);
+    if (courseId) {
+      const c = courses.find((item) => item.id === courseId);
+      if (c?.programId) {
+        setActiveProgramId(c.programId);
+      }
+    }
   };
 
   const addCourseSection = (sec: Omit<CourseSection, 'id'>) => {
@@ -2596,6 +2745,377 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setConfig((prev) => ({ ...prev, ...cfg }));
   };
 
+  // 10. Administrator Database Hub (Total DB View, Edit, Delete & Backup)
+  const updateDbTableRecord = (tableName: string, recordId: string, updatedRecord: any) => {
+    switch (tableName) {
+      case 'users':
+        updateUser(recordId, updatedRecord);
+        break;
+      case 'faculties':
+        setFaculties((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'schools':
+        setSchools((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'departments':
+        setDepartments((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'regulations':
+        setRegulations((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'programs':
+        setPrograms((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'programOutcomes':
+        setProgramOutcomes((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'terms':
+        setTerms((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'courses':
+        setCourses((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'courseSections':
+        setCourseSections((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'courseOutcomes':
+        setCourseOutcomes((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'coPoMappings':
+        setCoPoMappings((prev) => prev.map((item) => (((item as any).id === recordId || `${item.courseOutcomeId}_${item.programOutcomeId}` === recordId) ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'scoringSchemes':
+        setScoringSchemes((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'scoringSubComponents':
+        setScoringSubComponents((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'assessmentWindows':
+        setAssessmentWindows((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'questionPapers':
+        setQuestionPapers((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'questionPaperSections':
+        setQuestionPaperSections((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'questionPaperTemplates':
+        setQuestionPaperTemplates((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'questions':
+        setQuestions((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'students':
+        setStudents((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'marks':
+        setMarks((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      case 'tenant':
+        setTenant((prev) => (prev ? { ...prev, ...updatedRecord } : updatedRecord));
+        break;
+      case 'emailConfig':
+        setEmailConfig((prev) => ({ ...prev, ...updatedRecord }));
+        break;
+      case 'outgoingEmails':
+        setOutgoingEmails((prev) => prev.map((item) => (item.id === recordId ? { ...item, ...updatedRecord } : item)));
+        break;
+      default:
+        console.warn(`Unknown table ${tableName}`);
+    }
+  };
+
+  const deleteDbTableRecord = (tableName: string, recordId: string) => {
+    switch (tableName) {
+      case 'users':
+        deleteUser(recordId);
+        break;
+      case 'faculties':
+        deleteFaculty(recordId);
+        break;
+      case 'schools':
+        deleteSchool(recordId);
+        break;
+      case 'departments':
+        deleteDepartment(recordId);
+        break;
+      case 'regulations':
+        deleteRegulation(recordId);
+        break;
+      case 'programs':
+        deleteProgram(recordId);
+        break;
+      case 'programOutcomes':
+        deleteProgramOutcome(recordId);
+        break;
+      case 'terms':
+        deleteTerm(recordId);
+        break;
+      case 'courses':
+        deleteCourse(recordId);
+        break;
+      case 'courseSections':
+        deleteCourseSection(recordId);
+        break;
+      case 'courseOutcomes':
+        deleteCourseOutcome(recordId);
+        break;
+      case 'coPoMappings':
+        setCoPoMappings((prev) => prev.filter((item) => ((item as any).id !== recordId && `${item.courseOutcomeId}_${item.programOutcomeId}` !== recordId)));
+        break;
+      case 'scoringSchemes':
+        deleteScoringScheme(recordId);
+        break;
+      case 'scoringSubComponents':
+        deleteScoringSubComponent(recordId);
+        break;
+      case 'assessmentWindows':
+        deleteAssessmentWindow(recordId);
+        break;
+      case 'questionPapers':
+        deleteQuestionPaper(recordId);
+        break;
+      case 'questionPaperSections':
+        deleteQuestionPaperSection(recordId);
+        break;
+      case 'questionPaperTemplates':
+        deleteQuestionPaperTemplate(recordId);
+        break;
+      case 'questions':
+        deleteQuestion(recordId);
+        break;
+      case 'students':
+        deleteStudent(recordId);
+        break;
+      case 'marks':
+        setMarks((prev) => prev.filter((item) => item.id !== recordId));
+        break;
+      case 'outgoingEmails':
+        setOutgoingEmails((prev) => prev.filter((item) => item.id !== recordId));
+        break;
+      default:
+        console.warn(`Unknown table ${tableName}`);
+    }
+  };
+
+  const addDbTableRecord = (tableName: string, newRecord: any) => {
+    const id = newRecord.id || `${tableName.slice(0, 4)}-${Date.now()}`;
+    const recordWithId = { ...newRecord, id };
+    switch (tableName) {
+      case 'users':
+        setUsers((prev) => [...prev, recordWithId]);
+        break;
+      case 'faculties':
+        setFaculties((prev) => [...prev, recordWithId]);
+        break;
+      case 'schools':
+        setSchools((prev) => [...prev, recordWithId]);
+        break;
+      case 'departments':
+        setDepartments((prev) => [...prev, recordWithId]);
+        break;
+      case 'regulations':
+        setRegulations((prev) => [...prev, recordWithId]);
+        break;
+      case 'programs':
+        setPrograms((prev) => [...prev, recordWithId]);
+        break;
+      case 'programOutcomes':
+        setProgramOutcomes((prev) => [...prev, recordWithId]);
+        break;
+      case 'terms':
+        setTerms((prev) => [...prev, recordWithId]);
+        break;
+      case 'courses':
+        setCourses((prev) => [...prev, recordWithId]);
+        break;
+      case 'courseSections':
+        setCourseSections((prev) => [...prev, recordWithId]);
+        break;
+      case 'courseOutcomes':
+        setCourseOutcomes((prev) => [...prev, recordWithId]);
+        break;
+      case 'coPoMappings':
+        setCoPoMappings((prev) => [...prev, recordWithId]);
+        break;
+      case 'scoringSchemes':
+        setScoringSchemes((prev) => [...prev, recordWithId]);
+        break;
+      case 'scoringSubComponents':
+        setScoringSubComponents((prev) => [...prev, recordWithId]);
+        break;
+      case 'assessmentWindows':
+        setAssessmentWindows((prev) => [...prev, recordWithId]);
+        break;
+      case 'questionPapers':
+        setQuestionPapers((prev) => [...prev, recordWithId]);
+        break;
+      case 'questionPaperSections':
+        setQuestionPaperSections((prev) => [...prev, recordWithId]);
+        break;
+      case 'questionPaperTemplates':
+        setQuestionPaperTemplates((prev) => [...prev, recordWithId]);
+        break;
+      case 'questions':
+        setQuestions((prev) => [...prev, recordWithId]);
+        break;
+      case 'students':
+        setStudents((prev) => [...prev, recordWithId]);
+        break;
+      case 'marks':
+        setMarks((prev) => [...prev, recordWithId]);
+        break;
+      case 'outgoingEmails':
+        setOutgoingEmails((prev) => [...prev, recordWithId]);
+        break;
+      default:
+        console.warn(`Unknown table ${tableName}`);
+    }
+  };
+
+  const clearDbTable = (tableName: string) => {
+    switch (tableName) {
+      case 'users':
+        setUsers((prev) => prev.filter((u) => u.id === currentUser?.id));
+        break;
+      case 'faculties':
+        setFaculties([]);
+        break;
+      case 'schools':
+        setSchools([]);
+        break;
+      case 'departments':
+        setDepartments([]);
+        break;
+      case 'regulations':
+        setRegulations([]);
+        break;
+      case 'programs':
+        setPrograms([]);
+        break;
+      case 'programOutcomes':
+        setProgramOutcomes([]);
+        break;
+      case 'terms':
+        setTerms([]);
+        break;
+      case 'courses':
+        setCourses([]);
+        break;
+      case 'courseSections':
+        setCourseSections([]);
+        break;
+      case 'courseOutcomes':
+        setCourseOutcomes([]);
+        break;
+      case 'coPoMappings':
+        setCoPoMappings([]);
+        break;
+      case 'scoringSchemes':
+        setScoringSchemes([]);
+        break;
+      case 'scoringSubComponents':
+        setScoringSubComponents([]);
+        break;
+      case 'assessmentWindows':
+        setAssessmentWindows([]);
+        break;
+      case 'questionPapers':
+        setQuestionPapers([]);
+        break;
+      case 'questionPaperSections':
+        setQuestionPaperSections([]);
+        break;
+      case 'questionPaperTemplates':
+        setQuestionPaperTemplates([]);
+        break;
+      case 'questions':
+        setQuestions([]);
+        break;
+      case 'students':
+        setStudents([]);
+        break;
+      case 'marks':
+        setMarks([]);
+        break;
+      case 'outgoingEmails':
+        setOutgoingEmails([]);
+        break;
+      default:
+        console.warn(`Unknown table ${tableName}`);
+    }
+  };
+
+  const exportDatabaseSnapshot = () => {
+    return {
+      version: '3.0',
+      exportedAt: new Date().toISOString(),
+      tenant,
+      adminUser,
+      users,
+      faculties,
+      schools,
+      departments,
+      regulations,
+      programs,
+      programOutcomes,
+      terms,
+      courses,
+      courseSections,
+      courseOutcomes,
+      coPoMappings,
+      scoringSchemes,
+      scoringSubComponents,
+      assessmentWindows,
+      questionPapers,
+      questionPaperSections,
+      questionPaperTemplates,
+      questions,
+      students,
+      marks,
+      emailConfig,
+      outgoingEmails,
+      config,
+    };
+  };
+
+  const importDatabaseSnapshot = (snapshot: any) => {
+    try {
+      if (!snapshot || typeof snapshot !== 'object') {
+        return { success: false, message: 'Invalid backup file format.' };
+      }
+      if (snapshot.tenant) setTenant(snapshot.tenant);
+      if (snapshot.adminUser) setAdminUser(snapshot.adminUser);
+      if (Array.isArray(snapshot.users)) setUsers(snapshot.users);
+      if (Array.isArray(snapshot.faculties)) setFaculties(snapshot.faculties);
+      if (Array.isArray(snapshot.schools)) setSchools(snapshot.schools);
+      if (Array.isArray(snapshot.departments)) setDepartments(snapshot.departments);
+      if (Array.isArray(snapshot.regulations)) setRegulations(snapshot.regulations);
+      if (Array.isArray(snapshot.programs)) setPrograms(snapshot.programs);
+      if (Array.isArray(snapshot.programOutcomes)) setProgramOutcomes(snapshot.programOutcomes);
+      if (Array.isArray(snapshot.terms)) setTerms(snapshot.terms);
+      if (Array.isArray(snapshot.courses)) setCourses(snapshot.courses);
+      if (Array.isArray(snapshot.courseSections)) setCourseSections(snapshot.courseSections);
+      if (Array.isArray(snapshot.courseOutcomes)) setCourseOutcomes(snapshot.courseOutcomes);
+      if (Array.isArray(snapshot.coPoMappings)) setCoPoMappings(snapshot.coPoMappings);
+      if (Array.isArray(snapshot.scoringSchemes)) setScoringSchemes(snapshot.scoringSchemes);
+      if (Array.isArray(snapshot.scoringSubComponents)) setScoringSubComponents(snapshot.scoringSubComponents);
+      if (Array.isArray(snapshot.assessmentWindows)) setAssessmentWindows(snapshot.assessmentWindows);
+      if (Array.isArray(snapshot.questionPapers)) setQuestionPapers(snapshot.questionPapers);
+      if (Array.isArray(snapshot.questionPaperSections)) setQuestionPaperSections(snapshot.questionPaperSections);
+      if (Array.isArray(snapshot.questionPaperTemplates)) setQuestionPaperTemplates(snapshot.questionPaperTemplates);
+      if (Array.isArray(snapshot.questions)) setQuestions(snapshot.questions);
+      if (Array.isArray(snapshot.students)) setStudents(snapshot.students);
+      if (Array.isArray(snapshot.marks)) setMarks(snapshot.marks);
+      if (snapshot.emailConfig) setEmailConfig(snapshot.emailConfig);
+      if (Array.isArray(snapshot.outgoingEmails)) setOutgoingEmails(snapshot.outgoingEmails);
+      if (snapshot.config) setConfig(snapshot.config);
+      return { success: true, message: 'Institutional database successfully restored from snapshot.' };
+    } catch (e: any) {
+      return { success: false, message: `Restore failed: ${e.message}` };
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -2671,7 +3191,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteTerm,
         courses,
         activeCourseId,
-        setActiveCourseId,
+        setActiveCourseId: selectCourse,
         addCourse,
         addCoursesBatch,
         updateCourse,
@@ -2756,6 +3276,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         navigateTo,
         initializeInstitution,
         resetAllData,
+        updateDbTableRecord,
+        deleteDbTableRecord,
+        addDbTableRecord,
+        clearDbTable,
+        exportDatabaseSnapshot,
+        importDatabaseSnapshot,
       }}
     >
       {children}

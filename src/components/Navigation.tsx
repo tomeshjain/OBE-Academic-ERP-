@@ -16,6 +16,7 @@ import {
   User,
   PanelLeftClose,
   PanelLeftOpen,
+  Database,
 } from 'lucide-react';
 
 export { type MenuItemId } from '@/types/erp';
@@ -112,6 +113,16 @@ export const MENU_ITEMS: MenuItemConfig[] = [
       { id: 'co', label: 'CO Attainment Analysis' },
       { id: 'po', label: 'PO & PSO Attainment & Radar' },
       { id: 'accreditation', label: 'Accreditation Summary' },
+    ],
+  },
+  {
+    id: 'db-manager',
+    label: 'Master Database Explorer',
+    shortLabel: 'Master DB',
+    icon: Database,
+    subItems: [
+      { id: 'explorer', label: 'All Tables & Records' },
+      { id: 'backup', label: 'Database Backup & Restore' },
     ],
   },
 ];

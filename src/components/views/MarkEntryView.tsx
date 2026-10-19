@@ -45,7 +45,7 @@ import {
   exportCompletedMarksToExcel,
   parseMarksFromExcel,
 } from '@/lib/excel-utils';
-import { printElement, downloadPdfFromElement } from '@/lib/pdf-print-utils';
+import { generateMarksAwardSheetPdf } from '@/lib/pdf-print-utils';
 
 export const MarkEntryView: React.FC = () => {
   const {
@@ -759,30 +759,74 @@ export const MarkEntryView: React.FC = () => {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const handlePrintAwardSheet = () => {
-    printElement(
-      'printable-award-sheet',
-      `Official_Award_Sheet_${activeCourse?.code || 'Course'}_${currentWindow?.subComponentName || 'Marks'}_${activeSection?.name || 'Section'}`
-    );
+    if (!activeCourse || !activeSection) {
+      setActionMessage({
+        type: 'info',
+        text: 'Please select an active course and section before printing the award sheet.',
+      });
+      return;
+    }
+    const totalComponentMarks = activeQuestions.reduce((sum, q) => sum + (q.maxMarks || 0), 0) || 50;
+    generateMarksAwardSheetPdf({
+      tenantName: tenant?.name,
+      courseCode: activeCourse.code,
+      courseTitle: activeCourse.title,
+      academicYear: '2026-2027',
+      sectionName: activeSection.name,
+      facultyName: currentUser?.fullName || 'Course Faculty',
+      windowName: currentWindow?.subComponentName || 'Marks Award Sheet',
+      maxMarks: totalComponentMarks,
+      students: filteredStudents,
+      questions: activeQuestions,
+      marks: marks,
+      action: 'print',
+    });
   };
 
   const handleDownloadAwardSheetPdf = async () => {
+    if (!activeCourse || !activeSection) {
+      setActionMessage({
+        type: 'info',
+        text: 'Please select an active course and section before downloading the award sheet PDF.',
+      });
+      return;
+    }
     try {
       setIsGeneratingPdf(true);
-      await downloadPdfFromElement(
-        'printable-award-sheet',
-        `Official_Award_Sheet_${activeCourse?.code || 'Course'}_${currentWindow?.subComponentName || 'Marks'}_${activeSection?.name || 'Section'}.pdf`
-      );
+      const totalComponentMarks = activeQuestions.reduce((sum, q) => sum + (q.maxMarks || 0), 0) || 50;
+      generateMarksAwardSheetPdf({
+        tenantName: tenant?.name,
+        courseCode: activeCourse.code,
+        courseTitle: activeCourse.title,
+        academicYear: '2026-2027',
+        sectionName: activeSection.name,
+        facultyName: currentUser?.fullName || 'Course Faculty',
+        windowName: currentWindow?.subComponentName || 'Marks Award Sheet',
+        maxMarks: totalComponentMarks,
+        students: filteredStudents,
+        questions: activeQuestions,
+        marks: marks,
+        action: 'download',
+      });
+      setActionMessage({
+        type: 'success',
+        text: 'Official vector marks award sheet PDF generated and downloaded successfully.',
+      });
     } catch (err) {
       console.error(err);
+      setActionMessage({
+        type: 'error',
+        text: 'Failed to generate PDF award sheet. Check browser console.',
+      });
     } finally {
       setIsGeneratingPdf(false);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full">
       {/* Header Banner - Space Optimized & Integrated */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4.5 backdrop-blur-sm">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-400 uppercase tracking-wider mb-0.5">
@@ -981,7 +1025,7 @@ export const MarkEntryView: React.FC = () => {
                   className="bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-3 py-1.5 focus:border-indigo-500 focus:outline-none"
                 >
                   {currentCourseWindows.length === 0 ? (
-                    <option value="">No Assessment Windows defined (See Menu 7)</option>
+                    <option value="">No Assessment Windows defined (See Assessment &amp; Question Papers)</option>
                   ) : (
                     currentCourseWindows.map((win) => (
                       <option key={win.id} value={win.id}>
@@ -1201,12 +1245,13 @@ export const MarkEntryView: React.FC = () => {
                 <span>Template</span>
               </button>
 
+              {/* Prominent Download Excel Action (Replaces Download PDF as Primary Option) */}
               <button
                 onClick={() => {
                   if (filteredStudents.length === 0 || activeQuestions.length === 0) {
                     setActionMessage({
                       type: 'error',
-                      text: 'No marks data to export.',
+                      text: 'No marks data to export. Ensure students and question blueprint are present.',
                     });
                     return;
                   }
@@ -1216,30 +1261,37 @@ export const MarkEntryView: React.FC = () => {
                     marks,
                     currentWindow?.subComponentName || 'Assessment Marks'
                   );
+                  setActionMessage({
+                    type: 'success',
+                    text: `Exported question-wise marks to Excel (.xlsx) for ${filteredStudents.length} students.`,
+                  });
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500 rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                title="Download Question-Wise Marks Excel Workbook (.xlsx)"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-teal-400" />
-                <span>Export Marks</span>
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Download Excel (.xlsx)</span>
               </button>
 
+              {/* Pure Vector Ground-Up PDF Printing */}
               <button
                 onClick={handlePrintAwardSheet}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 rounded-lg text-xs font-semibold shadow-sm transition-colors"
-                title="Print Official Examination Mark Award Sheet (isolated output)"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                title="Print Official Examination Mark Award Sheet (Ground-up pure vector PDF)"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>Print Award Sheet</span>
               </button>
 
+              {/* Pure Vector Ground-Up PDF Export */}
               <button
                 onClick={handleDownloadAwardSheetPdf}
                 disabled={isGeneratingPdf}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-lg text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
                 title="Download Vector PDF Award Sheet"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>{isGeneratingPdf ? 'Generating...' : 'Download PDF'}</span>
+                <Download className="w-3.5 h-3.5 text-amber-400" />
+                <span>{isGeneratingPdf ? 'Generating...' : 'Export PDF'}</span>
               </button>
             </div>
           </div>
@@ -1285,7 +1337,7 @@ export const MarkEntryView: React.FC = () => {
                       <div>
                         <h4 className="text-xs font-bold text-white flex items-center gap-2">
                           <span>Pending Faculty Deadline Extension Requests</span>
-                          <span className="bg-amber-500 text-slate-950 font-black px-1.5 py-0.2 rounded-full text-[10px]">
+                          <span className="bg-amber-500 text-slate-950 font-black px-1.5 py-0.5 rounded-full text-[10px]">
                             {pendingRequests.length}
                           </span>
                         </h4>

@@ -125,54 +125,94 @@ export const RegulationsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full">
       {/* Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-teal-400 bg-teal-950/80 px-3 py-1 rounded-full border border-teal-800/80">
-                Academic Regulations
-              </span>
-              <span className="text-xs text-slate-400">Curricular Framework & Statutory Policies &bull; Batch 2026</span>
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-teal-400 uppercase tracking-wider mb-0.5">
+              <span>Curricular Framework &amp; Statutory Policies</span>
+              <span>&bull;</span>
+              <span>Batch 2026</span>
             </div>
-            <h1 className="text-2xl font-black text-white mt-2">Academic Regulations</h1>
-            <p className="text-xs text-slate-400 mt-1">
+            <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              <Scale className="w-5 h-5 text-teal-400" />
+              <span>Academic Regulations</span>
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">
               Govern credit requirements, grading policies, and assessment rules across autonomous batches.
             </p>
           </div>
 
-          {canManageRegulations ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowBulkUpload(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
-                title="Bulk Upload CSV"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-teal-400" />
-                <span>Bulk Upload</span>
-              </button>
-              <button
-                onClick={openAdd}
-                className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Regulation</span>
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-teal-300">
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span>Institutional Governance (Read-Only)</span>
-            </div>
-          )}
+          {/* Sub-menu Tabs - Placed on Top Right */}
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium self-start md:self-auto flex-wrap gap-1 shrink-0">
+            <button
+              onClick={() => switchSubTab('regulations')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                subTab === 'regulations'
+                  ? 'bg-teal-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Regulations List ({regulations.length})</span>
+            </button>
+            <button
+              onClick={() => switchSubTab('framework')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                subTab === 'framework'
+                  ? 'bg-teal-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Scale className="w-3.5 h-3.5" />
+              <span>Credit Framework</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Options & Actions Bar - Below Tabs */}
+        <div className="mt-4 pt-3.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
+              <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+              Autonomous Institution Curricular System &bull; Active Policy Set
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {canManageRegulations ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkUpload(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-teal-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
+                  title="Bulk Upload CSV"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Upload</span>
+                </button>
+                <button
+                  onClick={openAdd}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Regulation</span>
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-teal-300">
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                <span>Institutional Governance (Read-Only)</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Feedback Alert */}
         {notification && (
           <div
-            className={`mt-4 p-3 rounded-xl text-xs flex items-center gap-2 ${
+            className={`mt-3.5 p-3 rounded-xl text-xs flex items-center gap-2 ${
               notification.type === 'success'
                 ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-200'
                 : 'bg-rose-950/80 border border-rose-800 text-rose-200'
@@ -182,28 +222,6 @@ export const RegulationsView: React.FC = () => {
             <span>{notification.text}</span>
           </div>
         )}
-
-        {/* Sub-Tabs */}
-        <div className="flex items-center gap-2 mt-6 border-t border-slate-800 pt-4 overflow-x-auto text-xs">
-          <button
-            onClick={() => switchSubTab('regulations')}
-            className={`px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 ${
-              subTab === 'regulations' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>Regulations List ({regulations.length})</span>
-          </button>
-          <button
-            onClick={() => switchSubTab('framework')}
-            className={`px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 ${
-              subTab === 'framework' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Scale className="w-4 h-4" />
-            <span>2026 Batch Credit Framework</span>
-          </button>
-        </div>
       </div>
 
       {/* SUBTAB 1: REGULATIONS LIST */}
@@ -259,15 +277,17 @@ export const RegulationsView: React.FC = () => {
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete regulation "${r.code}"?`)) deleteRegulation(r.id);
-                        }}
-                        className="p-2 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-xl transition-colors"
-                        title="Delete Regulation"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {academicScope.isAdmin && (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete regulation "${r.code}"?`)) deleteRegulation(r.id);
+                          }}
+                          className="p-2 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-xl transition-colors"
+                          title="Delete Regulation (Admin Only)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

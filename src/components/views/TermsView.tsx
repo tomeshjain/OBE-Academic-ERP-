@@ -130,52 +130,92 @@ export const TermsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full">
       {/* Top Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 bg-amber-950/80 px-3 py-1 rounded-full border border-amber-800/80">
-                Academic Terms
-              </span>
-              <span className="text-xs text-slate-400">Academic Sessions & Calendars &bull; Batch 2026</span>
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-400 uppercase tracking-wider mb-0.5">
+              <span>Academic Sessions &amp; Calendars</span>
+              <span>&bull;</span>
+              <span>Batch 2026</span>
             </div>
-            <h1 className="text-2xl font-black text-white mt-2">Academic Terms & Semesters</h1>
-            <p className="text-xs text-slate-400 mt-1">
+            <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-amber-400" />
+              <span>Academic Terms &amp; Semesters</span>
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">
               Configure semesters, instructional periods, and examination windows for the 2026 Batch.
             </p>
           </div>
 
-          {canManageTerms ? (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowBulkModal(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload CSV</span>
-              </button>
-              <button
-                onClick={openAdd}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Term</span>
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-amber-400">
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span>Institutional Calendar Governance (Read-Only)</span>
-            </div>
-          )}
+          {/* Sub-menu Tabs - Placed on Top Right */}
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium self-start md:self-auto flex-wrap gap-1 shrink-0">
+            <button
+              onClick={() => switchSubTab('terms')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                subTab === 'terms'
+                  ? 'bg-amber-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Academic Terms ({terms.length})</span>
+            </button>
+            <button
+              onClick={() => switchSubTab('timeline')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                subTab === 'timeline'
+                  ? 'bg-amber-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Instructional Timeline</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Options & Actions Bar - Below Tabs */}
+        <div className="mt-4 pt-3.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              Autonomous Academic Calendar &bull; Institutional Schedule
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {canManageTerms ? (
+              <>
+                <button
+                  onClick={() => setShowBulkModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Upload CSV</span>
+                </button>
+                <button
+                  onClick={openAdd}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Term</span>
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-amber-400">
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                <span>Institutional Calendar Governance (Read-Only)</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Feedback Alert */}
         {notification && (
           <div
-            className={`mt-4 p-3 rounded-xl text-xs flex items-center gap-2 ${
+            className={`mt-3.5 p-3 rounded-xl text-xs flex items-center gap-2 ${
               notification.type === 'success'
                 ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-200'
                 : 'bg-rose-950/80 border border-rose-800 text-rose-200'
@@ -185,28 +225,6 @@ export const TermsView: React.FC = () => {
             <span>{notification.text}</span>
           </div>
         )}
-
-        {/* Sub-Tabs */}
-        <div className="flex items-center gap-2 mt-6 border-t border-slate-800 pt-4 overflow-x-auto text-xs">
-          <button
-            onClick={() => switchSubTab('terms')}
-            className={`px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 ${
-              subTab === 'terms' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Academic Terms ({terms.length})</span>
-          </button>
-          <button
-            onClick={() => switchSubTab('timeline')}
-            className={`px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 ${
-              subTab === 'timeline' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            <span>2026 Batch Instructional Timeline</span>
-          </button>
-        </div>
       </div>
 
       {/* SUBTAB 1: TERMS LIST */}
@@ -288,15 +306,17 @@ export const TermsView: React.FC = () => {
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete academic term "${t.name}"?`)) deleteTerm(t.id);
-                            }}
-                            className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
-                            title="Delete Term"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {academicScope.isAdmin && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete academic term "${t.name}"?`)) deleteTerm(t.id);
+                              }}
+                              className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+                              title="Delete Term (Admin Only)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>

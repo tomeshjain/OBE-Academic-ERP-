@@ -136,7 +136,13 @@ export function exportCompletedMarksToExcel(
   students: StudentEnrollment[],
   questions: QuestionItem[],
   marks: MarkEntryRecord[],
-  assessmentName: string = 'Assessment Marks'
+  assessmentName: string = 'Assessment Marks',
+  metadata?: {
+    courseCode?: string;
+    courseTitle?: string;
+    sectionName?: string;
+    facultyName?: string;
+  }
 ) {
   const markMap = new Map<string, MarkEntryRecord>();
   marks.forEach((m) => {
@@ -145,7 +151,12 @@ export function exportCompletedMarksToExcel(
 
   const totalMaxMarks = questions.reduce((sum, q) => sum + q.maxMarks, 0);
 
-  const rows = students.map((s, idx) => {
+  let totalScoreSum = 0;
+  let appearedCount = 0;
+  let absentCount = 0;
+  let maxScoreRecorded = 0;
+
+  const rows: Record<string, string | number>[] = students.map((s, idx) => {
     const rowObj: Record<string, string | number> = {
       'Sl. No': idx + 1,
       'Roll Number': s.rollNumber,
@@ -158,16 +169,16 @@ export function exportCompletedMarksToExcel(
 
     questions.forEach((q) => {
       const entry = markMap.get(`${s.id}_${q.id}`);
-      const key = `${q.questionNumber} [Max: ${q.maxMarks}]`;
+      const key = `Q${q.questionNumber} [Max ${q.maxMarks}]`;
 
       if (!entry || entry.statusCode === 'ABSENT') {
-        rowObj[key] = 'ABSENT';
+        rowObj[key] = 'AB';
         isAbsent = true;
       } else if (entry.statusCode === 'MALPRACTICE') {
-        rowObj[key] = 'MALPRACTICE (0)';
+        rowObj[key] = 'MP';
         isMalpractice = true;
       } else if (entry.statusCode === 'EXEMPTED') {
-        rowObj[key] = 'EXEMPTED';
+        rowObj[key] = 'EX';
       } else {
         const val = entry.marksObtained ?? 0;
         rowObj[key] = val;
@@ -175,22 +186,68 @@ export function exportCompletedMarksToExcel(
       }
     });
 
-    rowObj[`Total Score (${totalMaxMarks}M)`] = isMalpractice
-      ? 0
-      : isAbsent && totalScore === 0
-      ? 'ABSENT'
-      : totalScore;
-    rowObj['Percentage (%)'] = totalMaxMarks > 0 ? ((totalScore / totalMaxMarks) * 100).toFixed(1) : 0;
+    if (isMalpractice) {
+      rowObj[`Total Score [${totalMaxMarks}M]`] = 0;
+      rowObj['Percentage (%)'] = '0.0%';
+      rowObj['Evaluation Status'] = 'MALPRACTICE';
+    } else if (isAbsent && totalScore === 0) {
+      rowObj[`Total Score [${totalMaxMarks}M]`] = 'AB';
+      rowObj['Percentage (%)'] = '0.0%';
+      rowObj['Evaluation Status'] = 'ABSENT';
+      absentCount++;
+    } else {
+      rowObj[`Total Score [${totalMaxMarks}M]`] = Number(totalScore.toFixed(1));
+      rowObj['Percentage (%)'] = totalMaxMarks > 0 ? ((totalScore / totalMaxMarks) * 100).toFixed(1) + '%' : '0.0%';
+      rowObj['Evaluation Status'] = 'PRESENT';
+      appearedCount++;
+      totalScoreSum += totalScore;
+      if (totalScore > maxScoreRecorded) maxScoreRecorded = totalScore;
+    }
 
     return rowObj;
   });
 
+  // Summary Rows
+  const classAvg = appearedCount > 0 ? (totalScoreSum / appearedCount).toFixed(2) : '0.00';
+  const classAvgPct = appearedCount > 0 && totalMaxMarks > 0 ? ((totalScoreSum / appearedCount / totalMaxMarks) * 100).toFixed(1) + '%' : '0.0%';
+
+  rows.push({
+    'Sl. No': '',
+    'Roll Number': '',
+    'Student Name': '--- SUMMARY STATISTICS ---',
+    [`Total Score [${totalMaxMarks}M]`]: '',
+    'Percentage (%)': '',
+    'Evaluation Status': '',
+  });
+
+  rows.push({
+    'Sl. No': '',
+    'Roll Number': 'TOTAL ENROLLED',
+    'Student Name': students.length,
+    [`Total Score [${totalMaxMarks}M]`]: `Appeared: ${appearedCount}`,
+    'Percentage (%)': `Absent: ${absentCount}`,
+    'Evaluation Status': `Class Avg: ${classAvg} (${classAvgPct}) | High: ${maxScoreRecorded}`,
+  });
+
   const ws = XLSX.utils.json_to_sheet(rows);
+
+  // Column auto-width adjustment
+  const colWidths = [
+    { wch: 8 },  // Sl. No
+    { wch: 18 }, // Roll Number
+    { wch: 28 }, // Student Name
+    ...questions.map(() => ({ wch: 14 })),
+    { wch: 18 }, // Total
+    { wch: 14 }, // %
+    { wch: 24 }, // Status
+  ];
+  ws['!cols'] = colWidths;
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Marks Matrix');
   XLSX.writeFile(
     wb,
-    `${assessmentName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_export.xlsx`
+    `${assessmentName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_marks_matrix.xlsx`
   );
 }
 

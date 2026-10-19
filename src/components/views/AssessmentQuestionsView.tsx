@@ -59,7 +59,7 @@ import { BulkDataUploadModal, BulkUploadColumn } from '@/components/BulkDataUplo
 import { sanitizeInput } from '@/lib/security';
 import { LatexRenderer } from '@/components/LatexRenderer';
 import { RichQuestionEditor } from '@/components/RichQuestionEditor';
-import { printElement, downloadPdfFromElement } from '@/lib/pdf-print-utils';
+import { generateQuestionPaperPdf } from '@/lib/pdf-print-utils';
 
 export const AssessmentQuestionsView: React.FC = () => {
   const {
@@ -705,23 +705,53 @@ export const AssessmentQuestionsView: React.FC = () => {
   };
 
   const handlePrintPaper = () => {
-    printElement(
-      'official-exam-paper-container',
-      `Examination_Paper_${activeCourse?.code || 'Course'}_${activeQuestionPaper?.title || 'Assessment'}`
-    );
+    if (!activeQuestionPaper) {
+      showMsg('Please select a question paper to print.', 'error');
+      return;
+    }
+    const marksTotal = activeQuestionPaper.totalMarks || currentPaperQuestions.reduce((sum, q) => sum + (q.maxMarks || 0), 0);
+    generateQuestionPaperPdf({
+      tenantName: tenant?.name,
+      courseCode: activeCourse?.code || 'COURSE',
+      courseTitle: activeCourse?.title || 'Course Title',
+      paperTitle: activeQuestionPaper.title,
+      academicYear: '2026-2027',
+      totalMarks: marksTotal,
+      duration: '3 Hours',
+      sections: currentPaperSections,
+      questions: currentPaperQuestions,
+      courseOutcomes: currentCourseOutcomes,
+      printOptions,
+      action: 'print',
+    });
   };
 
   const handleDownloadPaperPdf = async () => {
+    if (!activeQuestionPaper) {
+      showMsg('Please select a question paper to download.', 'error');
+      return;
+    }
     try {
       setIsGeneratingPdf(true);
-      await downloadPdfFromElement(
-        'official-exam-paper-container',
-        `Examination_Paper_${activeCourse?.code || 'Course'}_${activeQuestionPaper?.title || 'Assessment'}.pdf`
-      );
-      showMsg('Examination paper PDF generated successfully.');
+      const marksTotal = activeQuestionPaper.totalMarks || currentPaperQuestions.reduce((sum, q) => sum + (q.maxMarks || 0), 0);
+      generateQuestionPaperPdf({
+        tenantName: tenant?.name,
+        courseCode: activeCourse?.code || 'COURSE',
+        courseTitle: activeCourse?.title || 'Course Title',
+        paperTitle: activeQuestionPaper.title,
+        academicYear: '2026-2027',
+        totalMarks: marksTotal,
+        duration: '3 Hours',
+        sections: currentPaperSections,
+        questions: currentPaperQuestions,
+        courseOutcomes: currentCourseOutcomes,
+        printOptions,
+        action: 'download',
+      });
+      showMsg('Official examination question paper vector PDF generated and downloaded successfully.');
     } catch (err) {
       console.error(err);
-      showMsg('Failed to generate PDF. You can also use the browser print dialog.', 'error');
+      showMsg('Failed to generate PDF. Check browser console.', 'error');
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -1039,14 +1069,12 @@ export const AssessmentQuestionsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 w-full">
       {/* Header Banner - Space Optimized */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4.5 backdrop-blur-sm">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-400 uppercase tracking-wider mb-0.5">
-              <span>Module 7</span>
-              <span>&bull;</span>
               <span>Question Blueprints &amp; Assessment Windows</span>
             </div>
             <h1 className="text-xl font-bold text-white tracking-tight">
@@ -1763,7 +1791,7 @@ export const AssessmentQuestionsView: React.FC = () => {
                                     <div className="flex items-center gap-1.5">
                                       <span>{q.questionNumber}</span>
                                       {q.isOption && (
-                                        <span className="text-[9px] bg-indigo-950 border border-indigo-800 text-indigo-300 px-1 py-0.2 rounded font-sans">
+                                        <span className="text-[9px] bg-indigo-950 border border-indigo-800 text-indigo-300 px-1 py-0.5 rounded font-sans">
                                           {q.optionLabel || 'Choice'}
                                         </span>
                                       )}

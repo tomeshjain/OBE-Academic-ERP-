@@ -22,7 +22,7 @@ import {
   Layers,
   Download,
 } from 'lucide-react';
-import { printElement, downloadPdfFromElement } from '@/lib/pdf-print-utils';
+import { generateObeAttainmentDossierPdf } from '@/lib/pdf-print-utils';
 
 export const CourseOutcomeReportsView: React.FC = () => {
   const {
@@ -82,26 +82,7 @@ export const CourseOutcomeReportsView: React.FC = () => {
     showInstituteHeader: true,
   });
 
-  const handlePrintReport = () => {
-    printElement(
-      'printable-attainment-report',
-      `OBE_Attainment_Dossier_${activeCourse?.code || 'Course'}_${activeSubTab.toUpperCase()}`
-    );
-  };
 
-  const handleDownloadPdf = async () => {
-    try {
-      setIsExportingPdf(true);
-      await downloadPdfFromElement(
-        'printable-attainment-report',
-        `OBE_Attainment_Dossier_${activeCourse?.code || 'Course'}_${activeSubTab.toUpperCase()}.pdf`
-      );
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsExportingPdf(false);
-    }
-  };
 
   const displayedCourses = academicScope.visibleCourses;
   const activeCourse = useMemo(() => {
@@ -223,6 +204,49 @@ export const CourseOutcomeReportsView: React.FC = () => {
     config,
   ]);
 
+  const handlePrintReport = () => {
+    if (!report) {
+      alert('OBE Attainment report cannot be printed yet. Please ensure Course Outcomes, question blueprints, and student marks are configured for this course.');
+      return;
+    }
+    generateObeAttainmentDossierPdf({
+      tenantName: tenant?.name,
+      courseCode: activeCourse?.code || 'COURSE',
+      courseTitle: activeCourse?.title || 'Course Title',
+      programName: activeProgram?.name || 'Academic Program',
+      sectionName: activeSection ? activeSection.name : 'Course-wide Aggregate (All Sections)',
+      academicYear: '2026-2027',
+      report,
+      printOptions,
+      action: 'print',
+    });
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!report) {
+      alert('OBE Attainment report cannot be exported yet. Please ensure Course Outcomes, question blueprints, and student marks are configured for this course.');
+      return;
+    }
+    try {
+      setIsExportingPdf(true);
+      generateObeAttainmentDossierPdf({
+        tenantName: tenant?.name,
+        courseCode: activeCourse?.code || 'COURSE',
+        courseTitle: activeCourse?.title || 'Course Title',
+        programName: activeProgram?.name || 'Academic Program',
+        sectionName: activeSection ? activeSection.name : 'Course-wide Aggregate (All Sections)',
+        academicYear: '2026-2027',
+        report,
+        printOptions,
+        action: 'download',
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   // SVG Radar coordinates computation for Program Outcomes
   const radarData = useMemo(() => {
     if (!report || report.poAttainments.length === 0) return null;
@@ -293,29 +317,77 @@ export const CourseOutcomeReportsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full">
       {/* Top Banner */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-1">
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-400 uppercase tracking-wider mb-0.5">
               <span>Outcome-Based Education Analytics</span>
               <span>&bull;</span>
               <span>Accreditation Compliance</span>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
-              Course Outcome Reports
+            <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-indigo-400" />
+              <span>Course Outcome Reports</span>
             </h1>
-            <p className="text-slate-400 text-sm mt-1">
+            <p className="text-xs text-slate-400 mt-0.5">
               Multi-tier NBA/NAAC/ABET attainment engine computing Course Outcome (CO) achievement, Target vs Attained Gap Analysis, and Continuous Quality Improvement (CQI).
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Sub-menu Tabs - Placed on Top Right */}
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium self-start md:self-auto flex-wrap gap-1 shrink-0">
+            <button
+              onClick={() => switchSubTab('co')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                activeSubTab === 'co'
+                  ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>CO Attainment</span>
+            </button>
+            <button
+              onClick={() => switchSubTab('po')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                activeSubTab === 'po'
+                  ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Target className="w-3.5 h-3.5" />
+              <span>PO/PSO Matrix &amp; Radar</span>
+            </button>
+            <button
+              onClick={() => switchSubTab('accreditation')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                activeSubTab === 'accreditation'
+                  ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Accreditation Dossier</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Options & Actions Bar - Below Tabs */}
+        <div className="mt-4 pt-3.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
+              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+              Accreditation Engine &bull; NBA Tier-I &bull; NAAC 2.6.2 &bull; ABET EAC
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handlePrintReport}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              title="Print Attainment Dossier (with customizable sections & signatures)"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+              title="Print Official Attainment Dossier"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print Dossier</span>
@@ -324,8 +396,8 @@ export const CourseOutcomeReportsView: React.FC = () => {
             <button
               onClick={handleDownloadPdf}
               disabled={isExportingPdf}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
-              title="Download Vector PDF Report"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+              title="Download Ground-Up Vector PDF Report"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{isExportingPdf ? 'Generating...' : 'Download PDF'}</span>
@@ -333,48 +405,11 @@ export const CourseOutcomeReportsView: React.FC = () => {
 
             <button
               onClick={() => setShowConfigModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium transition-colors"
             >
               <Sliders className="w-3.5 h-3.5 text-indigo-400" />
               <span>Attainment Rules</span>
             </button>
-
-            {/* Sub-menu Tabs */}
-            <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800 text-xs font-medium">
-              <button
-                onClick={() => switchSubTab('co')}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-colors ${
-                  activeSubTab === 'co'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>CO Attainment</span>
-              </button>
-              <button
-                onClick={() => switchSubTab('po')}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-colors ${
-                  activeSubTab === 'po'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Target className="w-3.5 h-3.5" />
-                <span>PO/PSO Matrix &amp; Radar</span>
-              </button>
-              <button
-                onClick={() => switchSubTab('accreditation')}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-colors ${
-                  activeSubTab === 'accreditation'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Accreditation Dossier</span>
-              </button>
-            </div>
           </div>
         </div>
 

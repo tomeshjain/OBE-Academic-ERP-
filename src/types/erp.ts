@@ -54,7 +54,8 @@ export type MenuItemId =
   | 'scoring-components'
   | 'assessment-papers'
   | 'mark-entry'
-  | 'co-reports';
+  | 'co-reports'
+  | 'db-manager';
 
 // ============================================================================
 // Zod Validation Schemas

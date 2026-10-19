@@ -17,6 +17,7 @@ import {
   Sliders,
   Compass,
   FileSpreadsheet,
+  Lock,
 } from 'lucide-react';
 
 export const ProgramsAndOutcomesView: React.FC = () => {
@@ -98,8 +99,8 @@ export const ProgramsAndOutcomesView: React.FC = () => {
     }
     setProgCode(`BTECH-CSE-2026`);
     setProgName('');
-    const defaultDeptId = academicScope.isHod && academicScope.ledDepartment
-      ? academicScope.ledDepartment.id
+    const defaultDeptId = academicScope.isHod && academicScope.ledDepartments.length > 0
+      ? academicScope.ledDepartments[0].id
       : (academicScope.visibleDepartments[0]?.id || departments[0]?.id || '');
     setDeptId(defaultDeptId);
     setDegreeType('UNDERGRADUATE');
@@ -246,34 +247,73 @@ export const ProgramsAndOutcomesView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full">
       {/* Top Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-purple-400 bg-purple-950/80 px-3 py-1 rounded-full border border-purple-800/80">
-                Academic Programs
-              </span>
-              <span className="text-xs text-slate-400">Curriculum &amp; Outcome-Based Architecture &bull; Batch 2026</span>
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-purple-400 uppercase tracking-wider mb-0.5">
+              <span>Curriculum &amp; Outcome-Based Architecture</span>
+              <span>&bull;</span>
+              <span>Batch 2026</span>
             </div>
-            <h1 className="text-2xl font-black text-white mt-2">
-              Programs & Outcomes (POs / PSOs)
+            <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              <GraduationCap className="w-5 h-5 text-purple-400" />
+              <span>Programs &amp; Outcomes (POs / PSOs)</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-400 mt-0.5">
               Every academic program manages its own isolated Graduate Attributes (POs) and Program Specific Outcomes (PSOs).
             </p>
           </div>
 
-          {/* Program Selector & Action */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Sub-menu Tabs - Placed on Top Right */}
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium self-start md:self-auto flex-wrap gap-1 shrink-0">
+            <button
+              onClick={() => switchSubTab('programs')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                subTab === 'programs'
+                  ? 'bg-purple-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              <span>Academic Programs ({displayedPrograms.length})</span>
+            </button>
+            <button
+              onClick={() => switchSubTab('pos')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                subTab === 'pos'
+                  ? 'bg-purple-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Target className="w-3.5 h-3.5" />
+              <span>POs ({currentProgramPos.length})</span>
+            </button>
+            <button
+              onClick={() => switchSubTab('psos')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                subTab === 'psos'
+                  ? 'bg-purple-600 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>PSOs ({currentProgramPsos.length})</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Options & Actions Bar - Below Tabs */}
+        <div className="mt-4 pt-3.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
             {displayedPrograms.length > 0 && (
-              <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs">
-                <span className="text-slate-400 font-semibold">Active Program:</span>
+              <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs">
+                <span className="text-slate-400 font-semibold uppercase text-[10px]">Active Program:</span>
                 <select
                   value={activeProgram?.id || ''}
                   onChange={(e) => setActiveProgramId(e.target.value)}
-                  className="bg-transparent text-purple-300 font-bold focus:outline-none cursor-pointer"
+                  className="bg-transparent text-purple-300 font-bold focus:outline-none cursor-pointer max-w-[220px] truncate"
                 >
                   {displayedPrograms.map((p) => (
                     <option key={p.id} value={p.id} className="bg-slate-900 text-white">
@@ -283,31 +323,33 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                 </select>
               </div>
             )}
+          </div>
 
+          <div className="flex flex-wrap items-center gap-2">
             {subTab === 'programs' && academicScope.canCreateProgram && (
-              <div className="flex items-center gap-2">
+              <>
                 <button
                   onClick={() => setShowBulkModal('programs')}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-purple-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-purple-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   <span>Bulk Upload CSV</span>
                 </button>
                 <button
                   onClick={openAddProgram}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                   <span>Add Program</span>
                 </button>
-              </div>
+              </>
             )}
 
             {subTab === 'pos' && activeProgram && academicScope.canCreateProgram && (
-              <div className="flex items-center gap-2">
+              <>
                 <button
                   onClick={() => setShowBulkModal('pos')}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-purple-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-purple-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   <span>Bulk Upload POs</span>
@@ -319,7 +361,7 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                       showMsg(`Generated standard NBA reference POs & PSOs for ${activeProgram.code}.`);
                     }
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
                   title="Optionally populate standard NBA reference PO1-PO12 for this program"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -327,31 +369,31 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                 </button>
                 <button
                   onClick={openAddPO}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                   <span>Add PO</span>
                 </button>
-              </div>
+              </>
             )}
 
             {subTab === 'psos' && activeProgram && academicScope.canCreateProgram && (
-              <div className="flex items-center gap-2">
+              <>
                 <button
                   onClick={() => setShowBulkModal('psos')}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-purple-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-purple-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   <span>Bulk Upload PSOs</span>
                 </button>
                 <button
                   onClick={openAddPSO}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                   <span>Add PSO</span>
                 </button>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -359,7 +401,7 @@ export const ProgramsAndOutcomesView: React.FC = () => {
         {/* Feedback Alert */}
         {notification && (
           <div
-            className={`mt-4 p-3 rounded-xl text-xs flex items-center gap-2 ${
+            className={`mt-3.5 p-3 rounded-xl text-xs flex items-center gap-2 ${
               notification.type === 'success'
                 ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-200'
                 : 'bg-rose-950/80 border border-rose-800 text-rose-200'
@@ -369,60 +411,29 @@ export const ProgramsAndOutcomesView: React.FC = () => {
             <span>{notification.text}</span>
           </div>
         )}
-
-        {/* Sub-Tabs */}
-        <div className="flex items-center gap-2 mt-6 border-t border-slate-800 pt-4 overflow-x-auto text-xs">
-          <button
-            onClick={() => switchSubTab('programs')}
-            className={`px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 ${
-              subTab === 'programs' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            <span>Academic Programs ({programs.length})</span>
-          </button>
-          <button
-            onClick={() => switchSubTab('pos')}
-            className={`px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 ${
-              subTab === 'pos' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Target className="w-4 h-4" />
-            <span>
-              Program Outcomes (POs) &bull; {activeProgram ? activeProgram.code : 'None'} ({currentProgramPos.length})
-            </span>
-          </button>
-          <button
-            onClick={() => switchSubTab('psos')}
-            className={`px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 ${
-              subTab === 'psos' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Compass className="w-4 h-4" />
-            <span>
-              Program Specific Outcomes (PSOs) ({currentProgramPsos.length})
-            </span>
-          </button>
-        </div>
       </div>
 
       {/* SUBTAB 1: PROGRAMS LIST */}
       {subTab === 'programs' && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-          {programs.length === 0 ? (
+          {displayedPrograms.length === 0 ? (
             <div className="p-12 text-center space-y-3">
               <GraduationCap className="w-12 h-12 text-slate-600 mx-auto" />
               <h3 className="text-sm font-bold text-white">No Academic Programs Configured</h3>
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Add degree programs admitted for the 2026 Batch (e.g. B.Tech Computer Science & Engineering, Batch 2026-2030).
+                {academicScope.canCreateProgram
+                  ? 'Add degree programs admitted for the 2026 Batch under your department or school.'
+                  : 'No academic programs are currently available under your jurisdictional scope.'}
               </p>
-              <button
-                onClick={openAddProgram}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add First Program (Batch 2026)</span>
-              </button>
+              {academicScope.canCreateProgram && (
+                <button
+                  onClick={openAddProgram}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl inline-flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add First Program (Batch 2026)</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-slate-800">
@@ -481,26 +492,26 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                         Manage Outcomes
                       </button>
                       {academicScope.canCreateProgram && (
-                        <>
-                          <button
-                            onClick={() => openEditProgram(p)}
-                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
-                            title="Edit Program"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete program "${p.name}"? This also removes its mapped POs/PSOs.`)) {
-                                deleteProgram(p.id);
-                              }
-                            }}
-                            className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
-                            title="Delete Program"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
+                        <button
+                          onClick={() => openEditProgram(p)}
+                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+                          title="Edit Program"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {academicScope.canDeleteProgram && (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete program "${p.name}"? This also removes its mapped POs/PSOs.`)) {
+                              deleteProgram(p.id);
+                            }
+                          }}
+                          className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+                          title="Delete Program (Leadership Only)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -570,24 +581,31 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openEditPO(po)}
-                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
-                          title="Edit PO"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete Program Outcome "${po.code}"?`)) deleteProgramOutcome(po.id);
-                          }}
-                          className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
-                          title="Delete PO"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {academicScope.canCreateProgram ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openEditPO(po)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+                            title="Edit PO"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete Program Outcome "${po.code}"?`)) deleteProgramOutcome(po.id);
+                            }}
+                            className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+                            title="Delete PO"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-mono flex items-center justify-end gap-1">
+                          <Lock className="w-3 h-3 text-slate-600" />
+                          <span>Curriculum Locked</span>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -644,26 +662,33 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                       </div>
                     </td>
                     <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openEditPSO(pso)}
-                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
-                          title="Edit PSO"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete Program Specific Outcome "${pso.code}"?`)) {
-                              deleteProgramOutcome(pso.id);
-                            }
-                          }}
-                          className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
-                          title="Delete PSO"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {academicScope.canCreateProgram ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openEditPSO(pso)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+                            title="Edit PSO"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete Program Specific Outcome "${pso.code}"?`)) {
+                                deleteProgramOutcome(pso.id);
+                              }
+                            }}
+                            className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+                            title="Delete PSO"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-mono flex items-center justify-end gap-1">
+                          <Lock className="w-3 h-3 text-slate-600" />
+                          <span>Curriculum Locked</span>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -737,9 +762,9 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-slate-300 block mb-1 font-semibold">Department *</label>
-                    {academicScope.isHod && academicScope.ledDepartment ? (
+                    {academicScope.isHod && academicScope.ledDepartments.length === 1 ? (
                       <div className="w-full bg-slate-950/80 border border-amber-800/60 rounded-xl p-2.5 text-amber-300 flex items-center justify-between">
-                        <span>{academicScope.ledDepartment.code}: {academicScope.ledDepartment.name}</span>
+                        <span>{academicScope.ledDepartments[0].code}: {academicScope.ledDepartments[0].name}</span>
                         <span className="text-[10px] bg-amber-950 px-2 py-0.5 rounded border border-amber-800 font-mono text-amber-400">Your Governed Dept</span>
                       </div>
                     ) : (
@@ -748,7 +773,10 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                         onChange={(e) => setDeptId(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
                       >
-                        {academicScope.visibleDepartments.map((d) => (
+                        {(academicScope.isHod && academicScope.ledDepartments.length > 1
+                          ? academicScope.ledDepartments
+                          : academicScope.visibleDepartments
+                        ).map((d) => (
                           <option key={d.id} value={d.id}>
                             {d.code}: {d.name}
                           </option>

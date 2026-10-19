@@ -98,6 +98,7 @@ export function getVisibleMenuItemsForRole(role?: UserRole | null): MenuItemId[]
         'assessment-papers',
         'mark-entry',
         'co-reports',
+        'db-manager',
       ];
     case 'HEAD_OF_FACULTY':
       return [
@@ -155,10 +156,13 @@ export interface AcademicRoleScope {
   isFaculty: boolean;
   isStudent: boolean;
 
-  // Primary Entities Led by this User
+  // Primary Entities Led by this User (Supports multiple entity leadership, e.g. heading 2+ faculties)
   ledFaculty: AcademicFaculty | null;
+  ledFaculties: AcademicFaculty[];
   ledSchool: AcademicSchool | null;
+  ledSchools: AcademicSchool[];
   ledDepartment: AcademicDepartment | null;
+  ledDepartments: AcademicDepartment[];
   coordinatedCourses: CourseRecord[];
   mappedSections: CourseSection[];
 
@@ -183,8 +187,27 @@ export interface AcademicRoleScope {
   canApproveDeadlineExtension: boolean;
   canViewReportsForSection: (sectionId?: string | null) => boolean;
 
-  // User Management & Approval Permissions
+  // Specific Entity Governance Capabilities
+  canEditFaculty: boolean;
+  canDeleteFaculty: boolean;
+  canAssignFacultyHead: boolean;
+
+  canEditSchool: boolean;
+  canDeleteSchool: boolean;
+  canAssignSchoolHead: boolean;
+
+  canEditDepartment: boolean;
+  canDeleteDepartment: boolean;
+  canAssignDepartmentHead: boolean;
+
+  canDeleteProgram: boolean;
+  canDeleteCourse: boolean;
+
+  // User Management & Security Permissions
   canCreateUser: boolean;
+  canDeleteUser: boolean;
+  canEditUserRole: boolean;
+  canManageEmailGateway: boolean;
   canApproveUser: boolean;
   assignableRoles: UserRole[];
   allowedMenuItems: MenuItemId[];
@@ -212,8 +235,11 @@ export function computeAcademicScope(
       isFaculty: false,
       isStudent: false,
       ledFaculty: null,
+      ledFaculties: [],
       ledSchool: null,
+      ledSchools: [],
       ledDepartment: null,
+      ledDepartments: [],
       coordinatedCourses: [],
       mappedSections: [],
       visibleFaculties: [],
@@ -223,10 +249,21 @@ export function computeAcademicScope(
       visibleCourses: [],
       visibleSections: [],
       canCreateFaculty: false,
+      canEditFaculty: false,
+      canDeleteFaculty: false,
+      canAssignFacultyHead: false,
       canCreateSchool: false,
+      canEditSchool: false,
+      canDeleteSchool: false,
+      canAssignSchoolHead: false,
       canCreateDepartment: false,
+      canEditDepartment: false,
+      canDeleteDepartment: false,
+      canAssignDepartmentHead: false,
       canCreateProgram: false,
+      canDeleteProgram: false,
       canCreateCourse: false,
+      canDeleteCourse: false,
       canManageCourse: () => false,
       canEditMarksForSection: () => false,
       canUnlockOrExtendDeadline: false,
@@ -234,6 +271,9 @@ export function computeAcademicScope(
       canApproveDeadlineExtension: false,
       canViewReportsForSection: () => false,
       canCreateUser: false,
+      canDeleteUser: false,
+      canEditUserRole: false,
+      canManageEmailGateway: false,
       canApproveUser: false,
       assignableRoles: [],
       allowedMenuItems: ['courses', 'mark-entry', 'co-reports'],
@@ -252,18 +292,30 @@ export function computeAcademicScope(
   const isFaculty = role === 'COURSE_FACULTY';
   const isStudent = role === 'STUDENT';
 
-  // 1. Determine specifically led entities
-  const ledFaculty =
-    allFaculties.find((f) => f.headUserId === userId || f.headUserName?.toLowerCase().trim() === userName) ||
-    (isHeadOfFaculty ? allFaculties[0] || null : null);
+  // 1. Determine specifically led entities (Supports multi-entity governance, e.g. heading 2+ faculties)
+  const ledFaculties = allFaculties.filter(
+    (f) => f.headUserId === userId || (f.headUserName && f.headUserName.toLowerCase().trim() === userName)
+  );
+  if (ledFaculties.length === 0 && isHeadOfFaculty && allFaculties.length > 0) {
+    ledFaculties.push(allFaculties[0]);
+  }
+  const ledFaculty = ledFaculties[0] || null;
 
-  const ledSchool =
-    allSchools.find((s) => s.headUserId === userId || s.headUserName?.toLowerCase().trim() === userName) ||
-    (isHeadOfSchool ? allSchools[0] || null : null);
+  const ledSchools = allSchools.filter(
+    (s) => s.headUserId === userId || (s.headUserName && s.headUserName.toLowerCase().trim() === userName)
+  );
+  if (ledSchools.length === 0 && isHeadOfSchool && allSchools.length > 0) {
+    ledSchools.push(allSchools[0]);
+  }
+  const ledSchool = ledSchools[0] || null;
 
-  const ledDepartment =
-    allDepartments.find((d) => d.headUserId === userId || d.headUserName?.toLowerCase().trim() === userName) ||
-    (isHod ? allDepartments[0] || null : null);
+  const ledDepartments = allDepartments.filter(
+    (d) => d.headUserId === userId || (d.headUserName && d.headUserName.toLowerCase().trim() === userName)
+  );
+  if (ledDepartments.length === 0 && isHod && allDepartments.length > 0) {
+    ledDepartments.push(allDepartments[0]);
+  }
+  const ledDepartment = ledDepartments[0] || null;
 
   const coordinatedCourses = allCourses.filter(
     (c) =>
@@ -295,10 +347,11 @@ export function computeAcademicScope(
     visiblePrograms = allPrograms;
     visibleCourses = allCourses;
     visibleSections = allSections;
-  } else if (isHeadOfFaculty && ledFaculty) {
-    // Head of Faculty: Everything connected and present under his Faculty
-    visibleFaculties = allFaculties.filter((f) => f.id === ledFaculty.id);
-    visibleSchools = allSchools.filter((s) => s.facultyId === ledFaculty.id);
+  } else if (isHeadOfFaculty && ledFaculties.length > 0) {
+    // Head of Faculty: Everything connected and present under ANY of their governed Faculties
+    const ledFacultyIds = new Set(ledFaculties.map((f) => f.id));
+    visibleFaculties = allFaculties.filter((f) => ledFacultyIds.has(f.id));
+    visibleSchools = allSchools.filter((s) => s.facultyId && ledFacultyIds.has(s.facultyId));
     const schoolIds = new Set(visibleSchools.map((s) => s.id));
     visibleDepartments = allDepartments.filter((d) => schoolIds.has(d.schoolId));
     const deptIds = new Set(visibleDepartments.map((d) => d.id));
@@ -307,24 +360,30 @@ export function computeAcademicScope(
     visibleCourses = allCourses.filter((c) => !c.programId || progIds.has(c.programId));
     const courseIds = new Set(visibleCourses.map((c) => c.id));
     visibleSections = allSections.filter((sec) => courseIds.has(sec.courseId));
-  } else if (isHeadOfSchool && ledSchool) {
-    // Head of School: Everything connected and present under his School
-    visibleFaculties = allFaculties.filter((f) => f.id === ledSchool.facultyId);
-    visibleSchools = allSchools.filter((s) => s.id === ledSchool.id);
-    visibleDepartments = allDepartments.filter((d) => d.schoolId === ledSchool.id);
+  } else if (isHeadOfSchool && ledSchools.length > 0) {
+    // Head of School: Everything connected and present under ANY of their governed Schools
+    const ledSchoolIds = new Set(ledSchools.map((s) => s.id));
+    const parentFacultyIds = new Set(ledSchools.map((s) => s.facultyId).filter(Boolean));
+    visibleFaculties = allFaculties.filter((f) => parentFacultyIds.has(f.id));
+    visibleSchools = allSchools.filter((s) => ledSchoolIds.has(s.id));
+    visibleDepartments = allDepartments.filter((d) => ledSchoolIds.has(d.schoolId));
     const deptIds = new Set(visibleDepartments.map((d) => d.id));
     visiblePrograms = allPrograms.filter((p) => deptIds.has(p.departmentId));
     const progIds = new Set(visiblePrograms.map((p) => p.id));
     visibleCourses = allCourses.filter((c) => !c.programId || progIds.has(c.programId));
     const courseIds = new Set(visibleCourses.map((c) => c.id));
     visibleSections = allSections.filter((sec) => courseIds.has(sec.courseId));
-  } else if (isHod && ledDepartment) {
-    // Head of Department: Everything connected and present under his Department
-    const parentSchool = allSchools.find((s) => s.id === ledDepartment.schoolId);
-    visibleFaculties = allFaculties.filter((f) => f.id === parentSchool?.facultyId);
-    visibleSchools = allSchools.filter((s) => s.id === ledDepartment.schoolId);
-    visibleDepartments = allDepartments.filter((d) => d.id === ledDepartment.id);
-    visiblePrograms = allPrograms.filter((p) => p.departmentId === ledDepartment.id);
+  } else if (isHod && ledDepartments.length > 0) {
+    // Head of Department: Everything connected and present under ANY of their governed Departments
+    const ledDeptIds = new Set(ledDepartments.map((d) => d.id));
+    const parentSchoolIds = new Set(ledDepartments.map((d) => d.schoolId).filter(Boolean));
+    const parentSchools = allSchools.filter((s) => parentSchoolIds.has(s.id));
+    const parentFacultyIds = new Set(parentSchools.map((s) => s.facultyId).filter(Boolean));
+
+    visibleFaculties = allFaculties.filter((f) => parentFacultyIds.has(f.id));
+    visibleSchools = allSchools.filter((s) => parentSchoolIds.has(s.id));
+    visibleDepartments = allDepartments.filter((d) => ledDeptIds.has(d.id));
+    visiblePrograms = allPrograms.filter((p) => ledDeptIds.has(p.departmentId));
     const progIds = new Set(visiblePrograms.map((p) => p.id));
     visibleCourses = allCourses.filter((c) => !c.programId || progIds.has(c.programId));
     const courseIds = new Set(visibleCourses.map((c) => c.id));
@@ -356,12 +415,30 @@ export function computeAcademicScope(
   }
 
   // 3. Action Capabilities
-  // "A Head of Faculty cannot create a New Faculty. He will be able to create schools in the Faculty for which he is the head."
   const canCreateFaculty = isAdmin;
+  const canEditFaculty = isAdmin;
+  const canDeleteFaculty = isAdmin;
+  const canAssignFacultyHead = isAdmin;
+
   const canCreateSchool = isAdmin || isHeadOfFaculty;
+  const canEditSchool = isAdmin || isHeadOfFaculty;
+  const canDeleteSchool = isAdmin || isHeadOfFaculty;
+  const canAssignSchoolHead = isAdmin || isHeadOfFaculty;
+
   const canCreateDepartment = isAdmin || isHeadOfFaculty || isHeadOfSchool;
+  const canEditDepartment = isAdmin || isHeadOfFaculty || isHeadOfSchool;
+  const canDeleteDepartment = isAdmin || isHeadOfFaculty || isHeadOfSchool;
+  const canAssignDepartmentHead = isAdmin || isHeadOfFaculty || isHeadOfSchool;
+
   const canCreateProgram = isAdmin || isHeadOfFaculty || isHeadOfSchool || isHod;
+  const canDeleteProgram = isAdmin || isHeadOfFaculty || isHeadOfSchool;
+
   const canCreateCourse = isAdmin || isHeadOfFaculty || isHeadOfSchool || isHod;
+  const canDeleteCourse = isAdmin || isHeadOfFaculty || isHeadOfSchool || isHod;
+
+  const canDeleteUser = isAdmin;
+  const canEditUserRole = isAdmin;
+  const canManageEmailGateway = isAdmin;
 
   // "The Faculty who is a course coordinator for a course can be everything related to the Course."
   const canManageCourse = (targetCourseId?: string | null): boolean => {
@@ -412,8 +489,11 @@ export function computeAcademicScope(
     isFaculty,
     isStudent,
     ledFaculty,
+    ledFaculties,
     ledSchool,
+    ledSchools,
     ledDepartment,
+    ledDepartments,
     coordinatedCourses,
     mappedSections,
     visibleFaculties,
@@ -423,10 +503,21 @@ export function computeAcademicScope(
     visibleCourses,
     visibleSections,
     canCreateFaculty,
+    canEditFaculty,
+    canDeleteFaculty,
+    canAssignFacultyHead,
     canCreateSchool,
+    canEditSchool,
+    canDeleteSchool,
+    canAssignSchoolHead,
     canCreateDepartment,
+    canEditDepartment,
+    canDeleteDepartment,
+    canAssignDepartmentHead,
     canCreateProgram,
+    canDeleteProgram,
     canCreateCourse,
+    canDeleteCourse,
     canManageCourse,
     canEditMarksForSection,
     canUnlockOrExtendDeadline,
@@ -434,6 +525,9 @@ export function computeAcademicScope(
     canApproveDeadlineExtension,
     canViewReportsForSection,
     canCreateUser: isAdmin || isHeadOfFaculty || isHeadOfSchool || isHod,
+    canDeleteUser,
+    canEditUserRole,
+    canManageEmailGateway,
     canApproveUser: isAdmin,
     assignableRoles: getAssignableRoles(currentUser.role),
     allowedMenuItems: getVisibleMenuItemsForRole(currentUser.role),

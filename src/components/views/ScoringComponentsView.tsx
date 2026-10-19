@@ -216,9 +216,9 @@ export const ScoringComponentsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full">
       {/* Header Banner */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-1">
@@ -233,7 +233,7 @@ export const ScoringComponentsView: React.FC = () => {
           </div>
 
           {/* Sub-menu Tabs */}
-          <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800 text-xs font-medium self-start md:self-auto">
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium self-start md:self-auto">
             <button
               onClick={() => switchSubTab('schemes')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-colors ${

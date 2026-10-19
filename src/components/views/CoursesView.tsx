@@ -535,14 +535,12 @@ export const CoursesView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 w-full">
       {/* Header Banner - Space-Optimized */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4.5 backdrop-blur-sm">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6 backdrop-blur-sm shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-400 uppercase tracking-wider mb-0.5">
-              <span>Module 5</span>
-              <span>&bull;</span>
               <span>Curriculum, Sections &amp; Outcome Articulation</span>
             </div>
             <h1 className="text-xl font-bold text-white tracking-tight">Courses</h1>
@@ -562,7 +560,7 @@ export const CoursesView: React.FC = () => {
               }`}
             >
               <BookOpen className="w-3.5 h-3.5" />
-              <span>Catalog ({courses.length})</span>
+              <span>Catalog ({displayedCourses.length})</span>
             </button>
             <button
               onClick={() => switchSubTab('enrollment')}
@@ -750,27 +748,31 @@ export const CoursesView: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      {canManageThis && (
+                      {(canManageThis || academicScope.canDeleteCourse) && (
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => openEditCourse(course)}
-                            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                            title="Edit Course"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete course ${course.code} - ${course.title}?`)) {
-                                deleteCourse(course.id);
-                                showMsg(`Deleted course ${course.code}.`);
-                              }
-                            }}
-                            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                            title="Delete Course"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canManageThis && (
+                            <button
+                              onClick={() => openEditCourse(course)}
+                              className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                              title="Edit Course"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {academicScope.canDeleteCourse && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete course ${course.code} - ${course.title}?`)) {
+                                  deleteCourse(course.id);
+                                  showMsg(`Deleted course ${course.code}.`);
+                                }
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                              title="Delete Course (Leadership Only)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
