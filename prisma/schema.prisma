@@ -1,0 +1,664 @@
+// ============================================================================
+// Multi-Tenant Academic ERP & OBE Attainment Platform - Prisma Schema
+// Standards Compliance: ABET (EAC/CAC), NBA (Tier-I & Tier-II), NAAC, UGC CBCS
+// Architecture: Multi-Tenant Row-Level Security (RLS) & Schema-Partitioned
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// ENUMS & DOMAIN CONSTANTS
+// ----------------------------------------------------------------------------
+
+enum UserRole {
+  SUPER_ADMIN          // Global SaaS Platform Administrator
+  TENANT_ADMIN         // University / Institutional Registrar & Admin
+  DEAN                 // Head of Academic Faculty / School
+  HOD                  // Head of Department
+  COURSE_COORDINATOR   // Lead Faculty defining syllabus, COs, Question Blueprints
+  COURSE_FACULTY       // Section Instructor entering marks and evaluations
+  STUDENT              // Enrolled Student (Read-only marks, transcripts, OBE radar)
+}
+
+enum BloomsTaxonomyLevel {
+  REMEMBER             // L1: Recall facts and basic concepts
+  UNDERSTAND           // L2: Explain ideas or concepts
+  APPLY                // L3: Use information in new situations
+  ANALYZE              // L4: Draw connections among ideas
+  EVALUATE             // L5: Justify a stand or decision
+  CREATE               // L6: Produce new or original work
+}
+
+enum AssessmentWindowStatus {
+  DRAFT                // Open for faculty data entry
+  SUBMITTED            // Submitted by faculty, pending approval/verification
+  FROZEN               // Permanently locked; marks finalized; attainment calculated
+  UNLOCKED_BY_ADMIN    // Emergency administrator override with audit logging
+}
+
+enum MarkEntryStatusCode {
+  PRESENT              // Normal numerical score evaluated
+  ABSENT               // Student was absent during assessment
+  MALPRACTICE          // Student was flagged for academic integrity breach (0 marks awarded, excluded from attainment denominator or penalized)
+  EXEMPTED             // Medically or administratively exempted (omitted from threshold calculations)
+}
+
+enum ComponentType {
+  CIE                  // Continuous Internal Evaluation (e.g. 40% weightage)
+  SEE                  // Semester End Examination (e.g. 60% weightage)
+}
+
+enum OutcomeType {
+  PO                   // Program Outcome (Standard Graduate Attribute PO1 - PO12)
+  PSO                  // Program Specific Outcome (Domain-specific PSO1 - PSO4)
+}
+
+// ----------------------------------------------------------------------------
+// TENANT & CORE INSTITUTIONAL HIERARCHY
+// ----------------------------------------------------------------------------
+
+model Tenant {
+  id                    String                 @id @default(uuid())
+  code                  String                 @unique // e.g. "STANFORD", "BITS-PILANI"
+  name                  String                 // e.g. "Apex Institute of Science & Technology"
+  subdomain             String                 @unique // e.g. "apex.obeplatform.io"
+  logoUrl               String?
+  mfaEnforced           Boolean                @default(true)
+  settings              Json?                  // Configurable OBE defaults (Threshold %, Direct/Indirect weights)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+
+  // Relations
+  faculties             Faculty[]
+  users                 User[]
+  regulations           AcademicRegulation[]
+  auditLogs             AuditLog[]
+
+  @@index([subdomain])
+}
+
+model User {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email                 String
+  passwordHash          String                 // Argon2id / bcrypt hashed
+  firstName             String
+  lastName              String
+  role                  UserRole
+  isActive              Boolean                @default(true)
+  isMfaEnabled          Boolean                @default(false)
+  mfaSecret             String?
+  departmentId          String?
+  department            Department?            @relation(fields: [departmentId], references: [id])
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+
+  // Inverse Relations
+  coordinatedCourses    Course[]               @relation("CourseCoordinator")
+  sectionAssignments    SectionFaculty[]
+  enrollments           Enrollment[]
+  markEntriesCreated    MarkEntry[]            @relation("MarkEntryAuthor")
+  unlockedAuditLogs     AuditLog[]             @relation("AuditUser")
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+}
+
+model Faculty {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code                  String                 // e.g. "FET" (Faculty of Engineering & Technology)
+  name                  String                 // e.g. "Faculty of Engineering & Technology"
+  deanId                String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+
+  // Relations
+  schools               School[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model School {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  facultyId             String
+  faculty               Faculty                @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  code                  String                 // e.g. "SCSE"
+  name                  String                 // e.g. "School of Computer Science & Engineering"
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+
+  // Relations
+  departments           Department[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, facultyId])
+}
+
+model Department {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  schoolId              String
+  school                School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  code                  String                 // e.g. "CSE-AI"
+  name                  String                 // e.g. "Department of Artificial Intelligence & Data Science"
+  hodId                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+
+  // Relations
+  programs              Program[]
+  users                 User[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, schoolId])
+}
+
+// ----------------------------------------------------------------------------
+// ACADEMIC REGULATIONS & DEGREE PROGRAMS
+// ----------------------------------------------------------------------------
+
+model AcademicRegulation {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code                  String                 // e.g. "R2026-CBCS", "R2022-AUTONOMOUS"
+  name                  String                 // e.g. "Choice Based Credit System Regulation 2026"
+  minTotalCredits       Int                    @default(160)
+  gradingScale          Json                   // JSON definition of letter grades (O, A+, A, B+, B, C, P, F) with grade points
+  defaultObeThreshold   Float                  @default(60.0) // Percentage required for question mastery (e.g. 60%)
+  defaultAttainmentLevels Json                 // JSON for 3-tier rules: [{ level: 3, minPct: 70 }, { level: 2, minPct: 60 }, { level: 1, minPct: 50 }]
+  directWeight          Float                  @default(0.80) // 80% Direct OBE weight
+  indirectWeight        Float                  @default(0.20) // 20% Indirect Exit Survey weight
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+
+  // Relations
+  programs              Program[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model Program {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  departmentId          String
+  department            Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  regulationId          String
+  regulation            AcademicRegulation     @relation(fields: [regulationId], references: [id], onDelete: Restrict)
+  code                  String                 // e.g. "BTECH-CSE"
+  name                  String                 // e.g. "Bachelor of Technology in Computer Science & Engineering"
+  degreeType            String                 // e.g. "UNDERGRADUATE" / "POSTGRADUATE" / "DOCTORAL"
+  durationYears         Int                    @default(4)
+  totalTerms            Int                    @default(8)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+
+  // Relations
+  terms                 Term[]
+  programOutcomes       ProgramOutcome[]
+
+  @@unique([tenantId, code, regulationId])
+  @@index([tenantId, departmentId])
+}
+
+model Term {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  programId             String
+  program               Program                @relation(fields: [programId], references: [id], onDelete: Cascade)
+  termNumber            Int                    // 1 through 8
+  academicYear          String                 // e.g. "2026-2027"
+  session               String                 // "FALL" / "SPRING" / "SUMMER"
+  startDate             DateTime
+  endDate               DateTime
+  isCurrent             Boolean                @default(false)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  courses               Course[]
+
+  @@unique([tenantId, programId, academicYear, session, termNumber])
+  @@index([tenantId, programId])
+}
+
+// ----------------------------------------------------------------------------
+// OUTCOME-BASED EDUCATION (OBE): POS, PSOS, COURSES & COS
+// ----------------------------------------------------------------------------
+
+model ProgramOutcome {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  programId             String
+  program               Program                @relation(fields: [programId], references: [id], onDelete: Cascade)
+  code                  String                 // "PO1", "PO2" ... "PO12" or "PSO1", "PSO2"
+  type                  OutcomeType            // PO or PSO
+  title                 String                 // e.g. "Engineering Knowledge"
+  description           String                 // Detailed NBA/ABET graduate attribute descriptor
+  targetThresholdPct    Float                  @default(60.0) // % students expected to attain
+  targetLevel           Float                  @default(2.5)  // Target attainment on 0-3 scale
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Inverse Relations
+  coMappings            CoPoMapping[]
+
+  @@unique([tenantId, programId, code])
+  @@index([tenantId, programId])
+}
+
+model Course {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  termId                String
+  term                  Term                   @relation(fields: [termId], references: [id], onDelete: Cascade)
+  coordinatorId         String?
+  coordinator           User?                  @relation("CourseCoordinator", fields: [coordinatorId], references: [id])
+  code                  String                 // e.g. "CS301"
+  title                 String                 // e.g. "Data Structures & Algorithms"
+  credits               Int                    @default(4)
+  lectureHours          Int                    @default(3) // L
+  tutorialHours         Int                    @default(0) // T
+  practicalHours        Int                    @default(2) // P
+  syllabus              String?                // Markdown / HTML detailed syllabus
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+
+  // Relations
+  courseOutcomes        CourseOutcome[]
+  sections              Section[]
+  evaluationScheme      CourseEvaluationScheme?
+  exitSurveys           CourseExitSurvey[]
+  attainmentSnapshots   ObeAttainmentSnapshot[]
+
+  @@unique([tenantId, termId, code])
+  @@index([tenantId, termId])
+}
+
+model CourseOutcome {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  courseId              String
+  course                Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  code                  String                 // e.g. "CO1", "CO2", "CO3"
+  statement             String                 // e.g. "Analyze algorithmic complexity and optimize asymptotic performance using Big-O notation."
+  bloomsLevel           BloomsTaxonomyLevel    // Primary Revised Bloom's target
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Inverse Relations
+  poMappings            CoPoMapping[]
+  questions             Question[]
+  surveyQuestions       SurveyQuestion[]
+
+  @@unique([tenantId, courseId, code])
+  @@index([tenantId, courseId])
+}
+
+model CoPoMapping {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  courseOutcomeId       String
+  courseOutcome         CourseOutcome          @relation(fields: [courseOutcomeId], references: [id], onDelete: Cascade)
+  programOutcomeId      String
+  programOutcome        ProgramOutcome         @relation(fields: [programOutcomeId], references: [id], onDelete: Cascade)
+  mappingLevel          Int                    // 0: None, 1: Low, 2: Medium, 3: High
+  justification         String?                // Pedagogical justification required for ABET/NBA audits
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@unique([tenantId, courseOutcomeId, programOutcomeId])
+  @@index([tenantId, courseOutcomeId])
+  @@index([tenantId, programOutcomeId])
+}
+
+// ----------------------------------------------------------------------------
+// SECTIONS & STUDENT ENROLLMENT
+// ----------------------------------------------------------------------------
+
+model Section {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  courseId              String
+  course                Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  name                  String                 // e.g. "Section A", "Section B"
+  maxCapacity           Int                    @default(60)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  facultyAssignments    SectionFaculty[]
+  enrollments           Enrollment[]
+  assessmentWindows     AssessmentWindow[]
+  attainmentSnapshots   ObeAttainmentSnapshot[]
+
+  @@unique([tenantId, courseId, name])
+  @@index([tenantId, courseId])
+}
+
+model SectionFaculty {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  sectionId             String
+  section               Section                @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  facultyId             String
+  faculty               User                   @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  isLead                Boolean                @default(false)
+  assignedAt            DateTime               @default(now())
+
+  @@unique([tenantId, sectionId, facultyId])
+  @@index([tenantId, facultyId])
+}
+
+model Enrollment {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  sectionId             String
+  section               Section                @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  studentId             String
+  student               User                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  rollNumber            String                 // Institutional Roll / Registration No (e.g. "2026-CSE-042")
+  enrollmentStatus      String                 @default("ACTIVE") // ACTIVE / DROPPED / WITHDRAWN
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  markEntries           MarkEntry[]
+  surveyResponses       SurveyResponse[]
+
+  @@unique([tenantId, sectionId, studentId])
+  @@unique([tenantId, rollNumber])
+  @@index([tenantId, sectionId])
+}
+
+// ----------------------------------------------------------------------------
+// EVALUATION SCHEME & ASSESSMENT TREE
+// ----------------------------------------------------------------------------
+
+model CourseEvaluationScheme {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  courseId              String                 @unique
+  course                Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  cieWeight             Float                  @default(0.40) // 40% Continuous Internal Evaluation
+  seeWeight             Float                  @default(0.60) // 60% Semester End Examination
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  scoringComponents     ScoringComponent[]
+
+  @@index([tenantId, courseId])
+}
+
+model ScoringComponent {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  schemeId              String
+  scheme                CourseEvaluationScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  type                  ComponentType          // CIE or SEE
+  name                  String                 // e.g. "Internal Continuous Assessment"
+  totalMarks            Float                  // e.g. 100 marks total internal pool
+  scaledWeight          Float                  // Scaled weight towards course final (e.g. 40.0)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  subComponents         SubComponent[]
+
+  @@index([tenantId, schemeId])
+}
+
+model SubComponent {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  scoringComponentId    String
+  scoringComponent      ScoringComponent       @relation(fields: [scoringComponentId], references: [id], onDelete: Cascade)
+  name                  String                 // e.g. "Mid-Term Exam 1", "Mid-Term Exam 2", "Lab Assessment", "Quiz 1"
+  code                  String                 // e.g. "MID-1", "MID-2", "LAB-EXP", "QUIZ-1"
+  maxMarks              Float                  // e.g. 50 marks
+  passPercentage        Float                  @default(40.0)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  questionPapers        QuestionPaper[]
+  assessmentWindows     AssessmentWindow[]
+
+  @@unique([tenantId, scoringComponentId, code])
+  @@index([tenantId, scoringComponentId])
+}
+
+// ----------------------------------------------------------------------------
+// QUESTION PAPER BLUEPRINT & RICH QUESTIONS
+// ----------------------------------------------------------------------------
+
+model QuestionPaper {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  subComponentId        String
+  subComponent          SubComponent           @relation(fields: [subComponentId], references: [id], onDelete: Cascade)
+  title                 String                 // e.g. "Mid-Term Examination 1 - Fall 2026"
+  totalMarks            Float                  // e.g. 50
+  durationMinutes       Int                    @default(90)
+  instructions          String?                // Examination instructions
+  blueprintStructure    Json                   // Structural rules: Parts, Compulsory vs Choice (e.g. Part A compulsory 20 marks, Part B either/or 30 marks)
+  isApproved            Boolean                @default(false)
+  approvedBy            String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  questions             Question[]
+  assessmentWindows     AssessmentWindow[]
+
+  @@index([tenantId, subComponentId])
+}
+
+model Question {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  questionPaperId       String
+  questionPaper         QuestionPaper          @relation(fields: [questionPaperId], references: [id], onDelete: Cascade)
+  courseOutcomeId       String
+  courseOutcome         CourseOutcome          @relation(fields: [courseOutcomeId], references: [id], onDelete: Restrict)
+  parentQuestionId      String?
+  parentQuestion        Question?              @relation("SubQuestions", fields: [parentQuestionId], references: [id], onDelete: Cascade)
+  questionNumber        String                 // e.g. "Q1.a", "Q1.b", "Q2"
+  content               String                 // Rich text / KaTeX LaTeX equation / Markdown snippet
+  maxMarks              Float                  // Max attainable marks for this item (e.g. 5.0)
+  bloomsLevel           BloomsTaxonomyLevel    // Revised Bloom's Taxonomy Level
+  targetThresholdPct    Float                  @default(60.0) // Student attainment cutoff % for this specific question
+  displayOrder          Int                    @default(0)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  subQuestions          Question[]             @relation("SubQuestions")
+  markEntries           MarkEntry[]
+
+  @@index([tenantId, questionPaperId])
+  @@index([tenantId, courseOutcomeId])
+}
+
+// ----------------------------------------------------------------------------
+// MARK ENTRY, ASSESSMENT WINDOWS & FREEZE GUARD ENGINE
+// ----------------------------------------------------------------------------
+
+model AssessmentWindow {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  sectionId             String
+  section               Section                @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subComponentId        String
+  subComponent          SubComponent           @relation(fields: [subComponentId], references: [id], onDelete: Cascade)
+  questionPaperId       String
+  questionPaper         QuestionPaper          @relation(fields: [questionPaperId], references: [id], onDelete: Cascade)
+  status                AssessmentWindowStatus @default(DRAFT)
+  openDateTime          DateTime               // Mark entry opens
+  closeDateTime         DateTime               // Regular faculty deadline
+  emergencyCloseDate    DateTime?              // Extended deadline if unlocked by admin
+  frozenAt              DateTime?              // Exact timestamp when marks were sealed
+  frozenBy              String?
+  submittedAt           DateTime?
+  submittedBy           String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  markEntries           MarkEntry[]
+  auditLogs             AuditLog[]
+
+  @@unique([tenantId, sectionId, subComponentId])
+  @@index([tenantId, sectionId])
+  @@index([tenantId, status])
+}
+
+model MarkEntry {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  assessmentWindowId    String
+  assessmentWindow      AssessmentWindow       @relation(fields: [assessmentWindowId], references: [id], onDelete: Cascade)
+  enrollmentId          String
+  enrollment            Enrollment             @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  questionId            String
+  question              Question               @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  statusCode            MarkEntryStatusCode    @default(PRESENT)
+  marksObtained         Float?                 // Null if ABSENT or EXEMPTED; numeric score if PRESENT; 0 if MALPRACTICE
+  createdById           String
+  createdBy             User                   @relation("MarkEntryAuthor", fields: [createdById], references: [id])
+  remarks               String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@unique([tenantId, assessmentWindowId, enrollmentId, questionId])
+  @@index([tenantId, assessmentWindowId])
+  @@index([tenantId, questionId])
+  @@index([tenantId, enrollmentId])
+}
+
+// ----------------------------------------------------------------------------
+// INDIRECT ASSESSMENT: COURSE EXIT SURVEYS
+// ----------------------------------------------------------------------------
+
+model CourseExitSurvey {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  courseId              String
+  course                Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title                 String                 // e.g. "Course Exit Survey - CS301 DSA"
+  academicYear          String
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  questions             SurveyQuestion[]
+  responses             SurveyResponse[]
+
+  @@index([tenantId, courseId])
+}
+
+model SurveyQuestion {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  surveyId              String
+  survey                CourseExitSurvey       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  courseOutcomeId       String
+  courseOutcome         CourseOutcome          @relation(fields: [courseOutcomeId], references: [id], onDelete: Cascade)
+  promptText            String                 // e.g. "To what extent can you design tree and graph traversal algorithms?"
+  scaleMax              Int                    @default(5) // 1-5 Likert scale
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // Relations
+  answers               SurveyResponse[]
+
+  @@index([tenantId, surveyId])
+  @@index([tenantId, courseOutcomeId])
+}
+
+model SurveyResponse {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  surveyId              String
+  survey                CourseExitSurvey       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  surveyQuestionId      String
+  surveyQuestion        SurveyQuestion         @relation(fields: [surveyQuestionId], references: [id], onDelete: Cascade)
+  enrollmentId          String
+  enrollment            Enrollment             @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  score                 Int                    // 1 to 5 Likert response
+  submittedAt           DateTime               @default(now())
+
+  @@unique([tenantId, surveyQuestionId, enrollmentId])
+  @@index([tenantId, surveyId])
+}
+
+// ----------------------------------------------------------------------------
+// OBE ATTAINMENT SNAPSHOTS & AUDIT LOGS
+// ----------------------------------------------------------------------------
+
+model ObeAttainmentSnapshot {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  courseId              String
+  course                Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  sectionId             String?
+  section               Section?               @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  academicYear          String
+  termSession           String
+  targetCutoffPct       Float                  // e.g. 60.0%
+  directWeight          Float                  // e.g. 0.80
+  indirectWeight        Float                  // e.g. 0.20
+  coAttainmentData      Json                   // Detailed per-CO results: { [coCode]: { direct: 2.8, indirect: 2.5, overall: 2.74, levelPct: 82.5 } }
+  poAttainmentData      Json                   // Detailed per-PO/PSO results: { [poCode]: { target: 2.5, attained: 2.62, percentage: 87.3 } }
+  rawMatrices           Json                   // Complete articulation matrix snapshot with weights & counts
+  complianceReport      Json                   // ABET/NBA format breakdown with standard deviation & statistics
+  calculatedAt          DateTime               @default(now())
+  calculatedBy          String
+
+  @@index([tenantId, courseId])
+  @@index([tenantId, sectionId])
+}
+
+model AuditLog {
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User                   @relation("AuditUser", fields: [userId], references: [id])
+  action                String                 // e.g. "WINDOW_UNLOCKED", "MARKS_FROZEN", "EMERGENCY_OVERRIDE"
+  entityType            String                 // "AssessmentWindow", "MarkEntry", "QuestionPaper"
+  entityId              String
+  previousState         Json?
+  newState              Json?
+  reason                String?                // Mandatory explanation for administrative overrides
+  ipAddress             String?
+  assessmentWindowId    String?
+  assessmentWindow      AssessmentWindow?      @relation(fields: [assessmentWindowId], references: [id])
+  timestamp             DateTime               @default(now())
+
+  @@index([tenantId, action])
+  @@index([tenantId, entityId])
+}
