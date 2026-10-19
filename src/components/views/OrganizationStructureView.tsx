@@ -39,6 +39,7 @@ import {
   Lock,
   Unlock,
   Search,
+  Loader2,
 } from 'lucide-react';
 import { sanitizeInput } from '@/lib/security';
 
@@ -491,16 +492,31 @@ export const OrganizationStructureView: React.FC = () => {
     showMsg('SMTP Email configuration successfully saved.');
   };
 
-  const handleSendTestEmail = (e: React.FormEvent) => {
+  const [isSendingTest, setIsSendingTest] = useState(false);
+
+  const applyGmailPreset = () => {
+    setSmtpHost('smtp.gmail.com');
+    setSmtpPort(465);
+    setSmtpSecure(true);
+    setSmtpSenderName('Academic ERP');
+    showMsg('Gmail preset applied (smtp.gmail.com : 465 SSL). Please enter your Gmail address in SMTP Username & Sender Email, and your 16-character Google App Password in SMTP Password.');
+  };
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!testEmailRecipient.trim()) return;
-    const res = sendTestEmail(testEmailRecipient.trim());
-    if (res.success) {
-      showMsg(res.message);
-      setShowTestEmailModal(false);
-      setTestEmailRecipient('');
-    } else {
-      showMsg(res.message, 'error');
+    setIsSendingTest(true);
+    try {
+      const res = await sendTestEmail(testEmailRecipient.trim());
+      if (res.success) {
+        showMsg(res.message);
+        setShowTestEmailModal(false);
+        setTestEmailRecipient('');
+      } else {
+        showMsg(res.message, 'error');
+      }
+    } finally {
+      setIsSendingTest(false);
     }
   };
 
@@ -1589,14 +1605,64 @@ export const OrganizationStructureView: React.FC = () => {
               onSubmit={handleSaveEmailConfig}
               className="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4 text-xs"
             >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800 flex-wrap gap-2">
                 <span className="font-bold text-white flex items-center gap-1.5">
                   <Settings className="w-4 h-4 text-indigo-400" />
                   SMTP Connection Settings
                 </span>
-                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
-                  {emailConfig.isConfigured ? 'Gateway Active' : 'Default Preset'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={applyGmailPreset}
+                    className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-red-950/80 border border-red-800 text-red-300 hover:bg-red-900/60 transition-colors shadow-sm"
+                  >
+                    ⚡ 1-Click Gmail Preset
+                  </button>
+                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
+                    {emailConfig.isConfigured ? 'Gateway Active' : 'Default Preset'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Gmail Guide Card */}
+              <div className="bg-slate-950/90 border border-indigo-900/60 rounded-xl p-3.5 space-y-2 text-[11px] text-slate-300 shadow-sm">
+                <div className="font-bold text-white flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs text-indigo-300">
+                    <Mail className="w-4 h-4 text-red-400" />
+                    <span>How to use your Gmail Account</span>
+                  </div>
+                  <span className="text-[10px] text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800 font-mono">App Password Required</span>
+                </div>
+                <p className="text-slate-400 leading-relaxed text-[11px]">
+                  Google does not allow third-party apps to log in using standard passwords. You must generate a free 16-character <strong>App Password</strong>:
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-slate-300 text-[11px] pl-1">
+                  <li>
+                    Turn on <strong>2-Step Verification</strong> on your Google Account:
+                    <a
+                      href="https://myaccount.google.com/signinoptions/two-step-verification"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-400 underline font-semibold ml-1 hover:text-indigo-300"
+                    >
+                      Open 2-Step Verification
+                    </a>
+                  </li>
+                  <li>
+                    Create an App Password at:
+                    <a
+                      href="https://myaccount.google.com/apppasswords"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-400 underline font-semibold ml-1 hover:text-indigo-300"
+                    >
+                      myaccount.google.com/apppasswords
+                    </a>
+                  </li>
+                  <li>Enter app name <strong>Academic ERP</strong> and click <strong>Create</strong>.</li>
+                  <li>Copy the 16-letter code and paste it into <strong>SMTP Password / API Key</strong> below.</li>
+                  <li>Enter your Gmail in <strong>SMTP Username</strong> and <strong>Sender Email</strong>, then click <strong>Save SMTP Configuration</strong>.</li>
+                </ol>
               </div>
 
               <div>
@@ -1777,10 +1843,17 @@ export const OrganizationStructureView: React.FC = () => {
                       </div>
 
                       <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
-                        <span className="text-emerald-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                          Dispatched via SMTP
-                        </span>
+                        {mail.status === 'FAILED' ? (
+                          <span className="text-rose-400 flex items-center gap-1 font-medium">
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                            Delivery Failed (Check SMTP credentials)
+                          </span>
+                        ) : (
+                          <span className="text-emerald-400 flex items-center gap-1 font-medium">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            Dispatched via SMTP
+                          </span>
+                        )}
                         <button
                           onClick={() => setPreviewEmail(mail)}
                           className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 font-semibold"
@@ -2462,15 +2535,18 @@ export const OrganizationStructureView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowTestEmailModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white bg-slate-800"
+                  disabled={isSendingTest}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white bg-slate-800 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm"
+                  disabled={isSendingTest}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm disabled:opacity-50 flex items-center gap-2"
                 >
-                  Send Test Email
+                  {isSendingTest && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isSendingTest ? 'Delivering via SMTP...' : 'Send Test Email'}</span>
                 </button>
               </div>
             </form>

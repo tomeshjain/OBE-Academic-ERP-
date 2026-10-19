@@ -418,7 +418,7 @@ export interface OutgoingEmailNotification {
   otp?: string;
   link?: string;
   sentAt: string;
-  status: 'DELIVERED' | 'SIMULATED';
+  status: 'DELIVERED' | 'SIMULATED' | 'FAILED';
 }
 
 export interface CoPoMappingRecord {

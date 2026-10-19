@@ -240,7 +240,7 @@ interface AppContextType {
   updateEmailConfig: (cfg: Partial<EmailSmtpConfig>) => void;
   outgoingEmails: OutgoingEmailNotification[];
   clearOutgoingEmails: () => void;
-  sendTestEmail: (recipientEmail: string) => { success: boolean; message: string };
+  sendTestEmail: (recipientEmail: string) => Promise<{ success: boolean; message: string }>;
   sendInstitutionalNotification: (params: {
     recipientEmail: string;
     recipientName: string;
@@ -494,7 +494,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setOutgoingEmails([]);
   };
 
-  const sendTestEmail = (recipientEmail: string) => {
+  const sendTestEmail = async (recipientEmail: string): Promise<{ success: boolean; message: string }> => {
     const testOtp = Math.floor(100000 + Math.random() * 900000).toString();
     const emailItem: OutgoingEmailNotification = {
       id: `mail-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -503,14 +503,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subject: `[TEST] Academic ERP SMTP Notification Test Delivery`,
       type: 'TEST_EMAIL',
       otp: testOtp,
+      body: `Test email dispatched from Academic ERP. SMTP Server: ${emailConfig.host}:${emailConfig.port}. Verification OTP: ${testOtp}`,
       sentAt: new Date().toISOString(),
       status: 'DELIVERED',
     };
-    setOutgoingEmails((prev) => [emailItem, ...prev]);
-    return {
-      success: true,
-      message: `Test email successfully dispatched via SMTP (${emailConfig.host}:${emailConfig.port}) to ${recipientEmail}.`,
-    };
+
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: emailConfig.host,
+          port: emailConfig.port,
+          secure: emailConfig.secure,
+          username: emailConfig.username,
+          password: emailConfig.password,
+          senderName: emailConfig.senderName,
+          senderEmail: emailConfig.senderEmail,
+          to: recipientEmail.trim(),
+          subject: emailItem.subject,
+          text: emailItem.body,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+              <h2 style="color: #4f46e5; margin-top: 0; font-size: 20px;">Academic ERP Notification Center</h2>
+              <p style="color: #334155; font-size: 14px; line-height: 1.5;">This is a <strong>test email delivery</strong> confirming that your Gmail / SMTP configuration is successfully connected and operational.</p>
+              <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
+                <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748b;"><strong>SMTP Host:</strong> ${emailConfig.host}:${emailConfig.port}</p>
+                <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748b;"><strong>Sender Account:</strong> ${emailConfig.senderEmail || emailConfig.username}</p>
+                <p style="margin: 0; font-size: 13px; color: #64748b;"><strong>Verification Code (OTP):</strong> <span style="font-size: 18px; font-weight: bold; color: #0f172a; letter-spacing: 2px;">${testOtp}</span></p>
+              </div>
+              <p style="font-size: 12px; color: #94a3b8; margin-bottom: 0;">Dispatched automatically by Academic ERP Autonomous Governance Suite.</p>
+            </div>
+          `,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        emailItem.status = 'FAILED';
+        setOutgoingEmails((prev) => [emailItem, ...prev]);
+        return {
+          success: false,
+          message: data.error || 'Failed to dispatch test email through SMTP server.',
+        };
+      }
+
+      setOutgoingEmails((prev) => [emailItem, ...prev]);
+      return {
+        success: true,
+        message: `Test email successfully sent to ${recipientEmail} via ${emailConfig.username}! Please check your inbox (and spam folder).`,
+      };
+    } catch (err: any) {
+      emailItem.status = 'FAILED';
+      setOutgoingEmails((prev) => [emailItem, ...prev]);
+      return {
+        success: false,
+        message: `Network or dispatch error: ${err.message || 'Unable to connect to email API'}`,
+      };
+    }
   };
 
   // 1. Organization Structure
@@ -996,6 +1046,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'DELIVERED',
     };
     setOutgoingEmails((prev) => [emailItem, ...prev]);
+
+    // Dispatch real email via backend API if SMTP credentials are provided
+    if (emailConfig.username && emailConfig.password) {
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+          <h2 style="color: #4f46e5; margin-top: 0; font-size: 20px;">Academic ERP Notification</h2>
+          <p style="color: #334155; font-size: 14px;">Dear <strong>${params.recipientName}</strong>,</p>
+          <p style="color: #334155; font-size: 14px; line-height: 1.5;">${params.body || params.subject}</p>
+          ${
+            params.otp
+              ? `<div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin: 20px 0; text-align: center; border: 1px solid #e2e8f0;">
+                  <span style="font-size: 13px; color: #475569; display: block; margin-bottom: 6px;">Your One-Time Security Code (OTP):</span>
+                  <span style="font-size: 26px; font-weight: bold; letter-spacing: 4px; color: #0f172a;">${params.otp}</span>
+                </div>`
+              : ''
+          }
+          ${
+            params.link
+              ? `<div style="margin: 24px 0;">
+                  <a href="${params.link}" style="background-color: #4f46e5; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Complete Account Setup</a>
+                </div>
+                <p style="font-size: 12px; color: #64748b;">Or paste this link into your browser:<br/><a href="${params.link}" style="color: #4f46e5; word-break: break-all;">${params.link}</a></p>`
+              : ''
+          }
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+          <p style="font-size: 11px; color: #94a3b8; margin: 0;">This email was sent automatically from Academic ERP on behalf of your institution.</p>
+        </div>
+      `;
+
+      fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: emailConfig.host,
+          port: emailConfig.port,
+          secure: emailConfig.secure,
+          username: emailConfig.username,
+          password: emailConfig.password,
+          senderName: emailConfig.senderName,
+          senderEmail: emailConfig.senderEmail,
+          to: params.recipientEmail,
+          subject: params.subject,
+          text: `${params.body || params.subject}\n\n${params.otp ? `OTP: ${params.otp}\n` : ''}${params.link ? `Link: ${params.link}\n` : ''}`,
+          html: emailHtml,
+        }),
+      }).catch((err) => {
+        console.warn('Background email dispatch error:', err);
+      });
+    }
+
     return emailItem;
   };
 
