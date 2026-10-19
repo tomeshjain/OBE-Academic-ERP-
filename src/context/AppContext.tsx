@@ -32,6 +32,7 @@ import {
   MenuItemId,
   EmailSmtpConfig,
   OutgoingEmailNotification,
+  DeadlineExtensionRequest,
 } from '@/types/erp';
 import { computeAcademicScope, AcademicRoleScope, requiresAdminApproval } from '@/lib/permissions';
 export type { AcademicRoleScope } from '@/lib/permissions';
@@ -365,6 +366,13 @@ interface AppContextType {
     reason?: string
   ) => void;
 
+  deadlineExtensionRequests: DeadlineExtensionRequest[];
+  requestDeadlineExtension: (
+    req: Omit<DeadlineExtensionRequest, 'id' | 'createdAt' | 'status'>
+  ) => DeadlineExtensionRequest;
+  approveDeadlineExtension: (requestId: string, notes?: string) => void;
+  rejectDeadlineExtension: (requestId: string, reason?: string) => void;
+
   questionPapers: QuestionPaper[];
   activeQuestionPaperId: string | null;
   setActiveQuestionPaperId: (id: string | null) => void;
@@ -556,14 +564,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [theme, setThemeState] = useState<AppTheme>('obsidian-black');
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
 
-  // Active Navigation & Deep-Linking Subtabs
+  // Active Navigation & Deep-Linking Subtabs with URL Parameter Persistence
   const [activeMenuItem, setActiveMenuItem] = useState<MenuItemId>('org-structure');
   const [activeSubTab, setActiveSubTab] = useState<string>('faculties');
+  const [deadlineExtensionRequests, setDeadlineExtensionRequests] = useState<DeadlineExtensionRequest[]>([]);
 
   const navigateTo = (menuId: MenuItemId, subTabId?: string) => {
     setActiveMenuItem(menuId);
     if (subTabId) {
       setActiveSubTab(subTabId);
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('academic_erp_active_menu', menuId);
+        if (subTabId) {
+          localStorage.setItem(`academic_erp_active_subtab_${menuId}`, subTabId);
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', menuId);
+        if (subTabId) {
+          url.searchParams.set('sub', subTabId);
+        } else {
+          url.searchParams.delete('sub');
+        }
+        window.history.replaceState({}, '', url.toString());
+      } catch {}
     }
   };
 
@@ -603,7 +628,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, [currentUser, faculties, schools, departments, programs, courses, courseSections]);
 
-  // Hydrate from localStorage on client mount
+  const VALID_MENU_ITEMS: MenuItemId[] = [
+    'org-structure',
+    'regulations',
+    'programs-outcomes',
+    'terms',
+    'courses',
+    'scoring-components',
+    'assessment-papers',
+    'mark-entry',
+    'co-reports',
+  ];
+
+  // Hydrate from localStorage and URL parameters on client mount
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -619,6 +656,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (userObj.role) setCurrentUserRole(userObj.role);
           } catch {}
         }
+
+        // Restore navigation from URL query string or localStorage to prevent losing current view on refresh
+        try {
+          const url = new URL(window.location.href);
+          const tabParam = url.searchParams.get('tab') as MenuItemId | null;
+          const subParam = url.searchParams.get('sub');
+          const courseParam = url.searchParams.get('course');
+          const programParam = url.searchParams.get('program');
+
+          let initialMenu: MenuItemId = 'org-structure';
+          if (tabParam && VALID_MENU_ITEMS.includes(tabParam)) {
+            initialMenu = tabParam;
+          } else {
+            const savedMenu = localStorage.getItem('academic_erp_active_menu') as MenuItemId | null;
+            if (savedMenu && VALID_MENU_ITEMS.includes(savedMenu)) {
+              initialMenu = savedMenu;
+            }
+          }
+          setActiveMenuItem(initialMenu);
+
+          const initialSub = subParam || localStorage.getItem(`academic_erp_active_subtab_${initialMenu}`);
+          if (initialSub) {
+            setActiveSubTab(initialSub);
+          }
+
+          if (courseParam) setActiveCourseId(courseParam);
+          if (programParam) setActiveProgramId(programParam);
+
+          // Popstate listener for browser back/forward buttons
+          const handlePopState = () => {
+            const currentUrl = new URL(window.location.href);
+            const t = currentUrl.searchParams.get('tab') as MenuItemId | null;
+            const s = currentUrl.searchParams.get('sub');
+            if (t && VALID_MENU_ITEMS.includes(t)) {
+              setActiveMenuItem(t);
+              if (s) setActiveSubTab(s);
+            }
+          };
+          window.addEventListener('popstate', handlePopState);
+        } catch {}
       }
 
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -659,6 +736,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setStudents(parsed.students || []);
           setMarks(parsed.marks || []);
           setSurveyResponses(parsed.surveyResponses || []);
+          if (parsed.deadlineExtensionRequests?.length) {
+            setDeadlineExtensionRequests(parsed.deadlineExtensionRequests);
+          }
           if (parsed.config) setConfig(parsed.config);
           if (parsed.emailConfig) setEmailConfig(parsed.emailConfig);
           if (parsed.outgoingEmails) setOutgoingEmails(parsed.outgoingEmails);
@@ -705,6 +785,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           students,
           marks,
           surveyResponses,
+          deadlineExtensionRequests,
           config,
           emailConfig,
           outgoingEmails,
@@ -1801,7 +1882,121 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         subject: `Assessment Marks Entry Window Deadline Extended: ${windowSubName}`,
         type: 'DEADLINE_EXTENSION',
         body: `The deadline for entering question-wise marks for ${windowSubName} has been extended to ${new Date(newCloseDateTime).toLocaleString()}. Audit Reason: ${reason || 'Administrative Extension'}. Please log in to complete marks entry within the extended deadline.`,
-        link: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}`,
+        link: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}?tab=mark-entry`,
+      });
+    }
+  };
+
+  const requestDeadlineExtension = (
+    req: Omit<DeadlineExtensionRequest, 'id' | 'createdAt' | 'status'>
+  ): DeadlineExtensionRequest => {
+    const newRequest: DeadlineExtensionRequest = {
+      ...req,
+      id: `ext-req-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      status: 'PENDING',
+    };
+    setDeadlineExtensionRequests((prev) => [newRequest, ...prev]);
+
+    const adminEmail = users.find((u) => u.role === 'TENANT_ADMIN' || u.role === 'SUPER_ADMIN')?.email || 'admin@institution.edu';
+
+    // Send institutional notification to administrators & coordinators
+    sendInstitutionalNotification({
+      recipientEmail: adminEmail,
+      recipientName: 'Course Coordinator & Administration',
+      subject: `[Academic ERP] Deadline Extension Requested: ${req.windowName} (${req.courseCode || 'Course'})`,
+      type: 'DEADLINE_EXTENSION',
+      body: `Faculty member ${req.facultyName} has submitted a deadline extension request for assessment window "${req.windowName}".\n\nCurrent Deadline: ${new Date(req.currentCloseDateTime).toLocaleString()}\nRequested New Deadline: ${new Date(req.requestedCloseDateTime).toLocaleString()}\n\nReason for Request:\n${req.reason}\n\nPlease review, approve or decline this request in the Examination/Marks portal.`,
+      link: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}?tab=mark-entry`,
+    });
+
+    return newRequest;
+  };
+
+  const approveDeadlineExtension = (requestId: string, notes?: string) => {
+    const req = deadlineExtensionRequests.find((r) => r.id === requestId);
+    if (!req) return;
+
+    const reviewerName = currentUser?.fullName || 'Academic Administration';
+    const reviewerRole = currentUser?.role || 'COURSE_COORDINATOR';
+
+    setDeadlineExtensionRequests((prev) =>
+      prev.map((r) =>
+        r.id === requestId
+          ? {
+              ...r,
+              status: 'APPROVED',
+              reviewedByUserId: currentUser?.id,
+              reviewedByName: reviewerName,
+              reviewedByRole: reviewerRole,
+              reviewedAt: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+
+    // Apply the extension to the Assessment Window automatically
+    setAssessmentWindows((prev) =>
+      prev.map((w) => {
+        if (w.id !== req.windowId) return w;
+        return {
+          ...w,
+          closeDateTime: req.requestedCloseDateTime,
+          status: 'UNLOCKED_BY_ADMIN',
+          unlockAuditReason:
+            notes ||
+            `Extension approved by ${reviewerName} (${reviewerRole.replace(/_/g, ' ')}) on request from ${req.facultyName}. Reason: ${req.reason}`,
+        };
+      })
+    );
+
+    // Send notification email to the requesting faculty member
+    const facUser = users.find((u) => u.id === req.facultyId);
+    if (facUser) {
+      sendInstitutionalNotification({
+        recipientEmail: facUser.email,
+        recipientName: facUser.fullName,
+        subject: `[Approved] Deadline Extension Granted for ${req.windowName}`,
+        type: 'DEADLINE_EXTENSION',
+        body: `Dear ${facUser.fullName},\n\nYour request to extend the deadline for assessment window "${req.windowName}" has been APPROVED by ${reviewerName}.\n\nNew Extended Deadline: ${new Date(req.requestedCloseDateTime).toLocaleString()}\nWindow Status: UNLOCKED for Marks Entry.\n\n${notes ? `Reviewer Notes: ${notes}\n\n` : ''}Institutional Examination Cell.`,
+        link: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}?tab=mark-entry`,
+      });
+    }
+  };
+
+  const rejectDeadlineExtension = (requestId: string, reason?: string) => {
+    const req = deadlineExtensionRequests.find((r) => r.id === requestId);
+    if (!req) return;
+
+    const reviewerName = currentUser?.fullName || 'Academic Administration';
+    const reviewerRole = currentUser?.role || 'COURSE_COORDINATOR';
+
+    setDeadlineExtensionRequests((prev) =>
+      prev.map((r) =>
+        r.id === requestId
+          ? {
+              ...r,
+              status: 'REJECTED',
+              rejectionReason: reason || 'Extension request declined by reviewer',
+              reviewedByUserId: currentUser?.id,
+              reviewedByName: reviewerName,
+              reviewedByRole: reviewerRole,
+              reviewedAt: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+
+    // Send notification email to the requesting faculty member
+    const facUser = users.find((u) => u.id === req.facultyId);
+    if (facUser) {
+      sendInstitutionalNotification({
+        recipientEmail: facUser.email,
+        recipientName: facUser.fullName,
+        subject: `[Declined] Deadline Extension Request for ${req.windowName}`,
+        type: 'DEADLINE_EXTENSION',
+        body: `Dear ${facUser.fullName},\n\nYour request to extend the deadline for assessment window "${req.windowName}" was reviewed and DECLINED by ${reviewerName}.\n\nReason: ${reason || 'Not approved as per institutional examination timeline.'}\n\nPlease contact your Course Coordinator or HOD for further clarification.\n\nInstitutional Examination Cell.`,
+        link: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}?tab=mark-entry`,
       });
     }
   };
@@ -2305,6 +2500,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMarks([]);
     setSurveyResponses([]);
     setOutgoingEmails([]);
+    setDeadlineExtensionRequests([]);
   };
 
   const updateConfig = (cfg: Partial<typeof config>) => {
@@ -2425,6 +2621,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAssessmentWindow,
         deleteAssessmentWindow,
         extendAssessmentWindowDeadline,
+        deadlineExtensionRequests,
+        requestDeadlineExtension,
+        approveDeadlineExtension,
+        rejectDeadlineExtension,
         questionPapers,
         activeQuestionPaperId,
         setActiveQuestionPaperId,

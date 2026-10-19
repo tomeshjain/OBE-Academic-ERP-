@@ -182,6 +182,8 @@ export interface AcademicRoleScope {
   canManageCourse: (courseId?: string | null) => boolean;
   canEditMarksForSection: (sectionId?: string | null, isWindowLocked?: boolean) => boolean;
   canUnlockOrExtendDeadline: boolean;
+  canRequestDeadlineExtension: boolean;
+  canApproveDeadlineExtension: boolean;
   canViewReportsForSection: (sectionId?: string | null) => boolean;
 
   // User Management & Approval Permissions
@@ -231,6 +233,8 @@ export function computeAcademicScope(
       canManageCourse: () => false,
       canEditMarksForSection: () => false,
       canUnlockOrExtendDeadline: false,
+      canRequestDeadlineExtension: false,
+      canApproveDeadlineExtension: false,
       canViewReportsForSection: () => false,
       canCreateUser: false,
       canApproveUser: false,
@@ -388,7 +392,9 @@ export function computeAcademicScope(
     return false;
   };
 
-  const canUnlockOrExtendDeadline = isAdmin || isHod;
+  const canUnlockOrExtendDeadline = isAdmin || isHod || isCoordinator;
+  const canRequestDeadlineExtension = isFaculty || isCoordinator;
+  const canApproveDeadlineExtension = isCoordinator || isHod || isHeadOfSchool || isHeadOfFaculty || isAdmin;
 
   // "and can only see the outcome reports of his section which is mapped to him."
   const canViewReportsForSection = (targetSectionId?: string | null): boolean => {
@@ -427,6 +433,8 @@ export function computeAcademicScope(
     canManageCourse,
     canEditMarksForSection,
     canUnlockOrExtendDeadline,
+    canRequestDeadlineExtension,
+    canApproveDeadlineExtension,
     canViewReportsForSection,
     canCreateUser: isAdmin || isHeadOfFaculty || isHeadOfSchool || isHod,
     canApproveUser: isAdmin,

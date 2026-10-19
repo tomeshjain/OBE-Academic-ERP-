@@ -320,6 +320,28 @@ export interface AssessmentWindowRecord {
   unlockAuditReason?: string;
 }
 
+export interface DeadlineExtensionRequest {
+  id: string;
+  windowId: string;
+  windowName: string;
+  courseId: string;
+  courseCode?: string;
+  sectionId?: string;
+  sectionName?: string;
+  facultyId: string;
+  facultyName: string;
+  currentCloseDateTime: string;
+  requestedCloseDateTime: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewedByUserId?: string;
+  reviewedByName?: string;
+  reviewedByRole?: UserRole;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  createdAt: string;
+}
+
 export interface AdminUser {
   id: string;
   fullName: string;

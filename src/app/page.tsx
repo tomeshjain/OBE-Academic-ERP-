@@ -26,6 +26,9 @@ import {
   Shield,
   GraduationCap,
   BookOpen,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
 
 function DashboardShell() {
@@ -51,7 +54,21 @@ function DashboardShell() {
   } = useApp();
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetConfirmWord, setResetConfirmWord] = useState('');
+  const [captchaCode, setCaptchaCode] = useState('');
+  const [captchaInput, setCaptchaInput] = useState('');
   const [showSecurityAudit, setShowSecurityAudit] = useState(false);
+
+  const generateCaptcha = () => {
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setCaptchaCode(code);
+    setCaptchaInput('');
+    setResetConfirmWord('');
+  };
 
   const visiblePrograms = academicScope?.visiblePrograms ?? programs;
   const visibleCourses = academicScope?.visibleCourses ?? courses;
@@ -67,6 +84,19 @@ function DashboardShell() {
       setActiveCourseId(visibleCourses[0].id);
     }
   }, [visibleCourses, activeCourseId, setActiveCourseId]);
+
+  // Synchronize active Course with URL query parameter so refresh preserves state
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && activeCourseId) {
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.get('course') !== activeCourseId) {
+          url.searchParams.set('course', activeCourseId);
+          window.history.replaceState({}, '', url.toString());
+        }
+      } catch {}
+    }
+  }, [activeCourseId]);
 
   React.useEffect(() => {
     if (
@@ -86,6 +116,9 @@ function DashboardShell() {
   const currentMenuConfig = MENU_ITEMS.find((m) => m.id === activeMenuItem) || MENU_ITEMS[0];
 
   const handleResetSystem = () => {
+    if (resetConfirmWord !== 'RESET' || captchaInput.toUpperCase() !== captchaCode.toUpperCase()) {
+      return;
+    }
     resetAllData();
     setShowResetConfirm(false);
   };
@@ -223,13 +256,18 @@ function DashboardShell() {
                 <span className="hidden md:inline">Log Out</span>
               </button>
 
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-900 transition-colors"
-                title="Reset All Data (Clean Slate)"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
+              {(currentUser.role === 'TENANT_ADMIN' || currentUser.role === 'SUPER_ADMIN') && (
+                <button
+                  onClick={() => {
+                    generateCaptcha();
+                    setShowResetConfirm(true);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-900 transition-colors"
+                  title="Reset & Wipe All Institutional Data (Administrator Only)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -343,30 +381,117 @@ function DashboardShell() {
         </div>
       )}
 
-      {/* RESET ALL DATA CONFIRMATION MODAL */}
+      {/* RESET ALL DATA CONFIRMATION MODAL WITH 'RESET' AND CAPTCHA VALIDATION */}
       {showResetConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2 text-rose-400">
-              <RotateCcw className="w-5 h-5" />
-              <span>Reset Academic ERP Platform?</span>
-            </h3>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              This will wipe all currently configured faculties, departments, programs, POs, courses, questions, students, and marks, returning you to the Initial Setup Wizard for a clean start with zero preset data.
-            </p>
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-              <button
-                onClick={() => setShowResetConfirm(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white bg-slate-800"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleResetSystem}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 shadow-sm"
-              >
-                Yes, Reset All Data
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-rose-900/60 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl p-6 sm:p-7 space-y-5">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-rose-950/80 border border-rose-700/80 flex items-center justify-center text-rose-400 shrink-0 shadow-inner">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-400 bg-rose-950/80 border border-rose-800 px-2 py-0.5 rounded">
+                    Admin Security Guard
+                  </span>
+                  <span className="text-[11px] text-slate-400">Irreversible Action</span>
+                </div>
+                <h3 className="text-lg font-bold text-white mt-1">
+                  Wipe &amp; Reset Institutional Platform?
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                  This administrative operation permanently deletes all configured faculties, departments, courses, examination blueprints, student rosters, and marks, returning the platform to a clean state.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+              {/* Step 1: Confirmation Word */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  1. Type <strong className="text-rose-400 font-mono tracking-widest">RESET</strong> in capital letters to confirm:
+                </label>
+                <input
+                  type="text"
+                  value={resetConfirmWord}
+                  onChange={(e) => setResetConfirmWord(e.target.value)}
+                  placeholder="Type RESET"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm tracking-wider focus:border-rose-500 focus:outline-none"
+                  autoComplete="off"
+                />
+              </div>
+
+              {/* Step 2: CAPTCHA Verification */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-300">
+                    2. Security CAPTCHA Verification:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={generateCaptcha}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 hover:underline"
+                    title="Generate new CAPTCHA challenge"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Change Code</span>
+                  </button>
+                </div>
+
+                {/* Visual Styled Captcha Badge */}
+                <div className="flex items-center gap-3 mb-2">
+                  <div
+                    className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-slate-900 via-rose-950/40 to-slate-900 border border-rose-900/50 flex items-center justify-center select-none shadow-inner"
+                    style={{ letterSpacing: '0.45em' }}
+                  >
+                    <span className="font-mono text-xl font-black text-rose-300 italic line-through decoration-rose-500/50 drop-shadow-md">
+                      {captchaCode}
+                    </span>
+                  </div>
+                </div>
+
+                <input
+                  type="text"
+                  value={captchaInput}
+                  onChange={(e) => setCaptchaInput(e.target.value.toUpperCase())}
+                  placeholder="Enter 6-character CAPTCHA"
+                  maxLength={6}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm tracking-widest uppercase focus:border-rose-500 focus:outline-none"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-[11px] text-slate-500">
+                {resetConfirmWord === 'RESET' && captchaInput.toUpperCase() === captchaCode.toUpperCase() ? (
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Verification passed</span>
+                  </span>
+                ) : (
+                  <span>Both RESET and Captcha required</span>
+                )}
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirm(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetSystem}
+                  disabled={resetConfirmWord !== 'RESET' || captchaInput.toUpperCase() !== captchaCode.toUpperCase()}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed shadow-md shadow-rose-950/50 transition-all flex items-center gap-2"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Execute Platform Wipe</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

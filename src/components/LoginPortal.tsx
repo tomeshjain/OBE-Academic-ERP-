@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { UserRole, AppTheme, OutgoingEmailNotification } from '@/types/erp';
+import { AppTheme } from '@/types/erp';
 import { InitialSetupWizard } from '@/components/InitialSetupWizard';
 import {
   GraduationCap,
@@ -15,16 +15,12 @@ import {
   EyeOff,
   Sparkles,
   Palette,
-  Check,
   Key,
-  RefreshCw,
-  Copy,
   X,
-  ExternalLink,
   ShieldAlert,
   CheckCircle2,
-  Inbox,
-  Clock,
+  Building2,
+  CheckCircle,
 } from 'lucide-react';
 import { validateAgainstSqlInjection, sanitizeInput, checkRateLimit, resetRateLimit } from '@/lib/security';
 
@@ -36,8 +32,6 @@ export const LoginPortal: React.FC = () => {
     theme,
     setTheme,
     isInitialized,
-    emailConfig,
-    outgoingEmails,
     requestForgotPassword,
     verifyOtpAndSetPassword,
   } = useApp();
@@ -45,8 +39,8 @@ export const LoginPortal: React.FC = () => {
   const isSystemEmpty = !isInitialized || !tenant || users.length === 0;
   const [showInitialSetupWizard, setShowInitialSetupWizard] = useState(false);
 
-  // Main login inputs - defaults to first real user in institution if present
-  const [email, setEmail] = useState(() => users[0]?.email || '');
+  // Main login inputs - completely blank by default to prevent credential leakage
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -74,12 +68,7 @@ export const LoginPortal: React.FC = () => {
   const [setupSuccess, setSetupSuccess] = useState<string | null>(null);
   const [isSetupLoading, setIsSetupLoading] = useState(false);
 
-  // Outgoing Email Simulator Modal State
-  const [showEmailSimulator, setShowEmailSimulator] = useState(false);
-  const [previewEmail, setPreviewEmail] = useState<OutgoingEmailNotification | null>(null);
-  const [copiedOtp, setCopiedOtp] = useState<string | null>(null);
-
-  // Check URL parameters for magic OTP setup links
+  // Check URL parameters for magic OTP setup links (e.g. from institutional activation emails)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -101,13 +90,6 @@ export const LoginPortal: React.FC = () => {
       }
     }
   }, []);
-
-  const handleSelectRealAccount = (user: (typeof users)[0]) => {
-    setEmail(user.email);
-    setPassword('••••••••');
-    setErrorMessage(null);
-    setSuccessMessage(null);
-  };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,7 +121,7 @@ export const LoginPortal: React.FC = () => {
     setIsLoading(true);
 
     setTimeout(() => {
-      const sanitizedEmail = sanitizeInput(email).toLowerCase();
+      const sanitizedEmail = sanitizeInput(email).toLowerCase().trim();
       const foundUser = users.find((u) => u.email.toLowerCase() === sanitizedEmail);
 
       if (foundUser) {
@@ -161,7 +143,7 @@ export const LoginPortal: React.FC = () => {
 
         if (foundUser.status === 'PENDING_PASSWORD_SETUP' && foundUser.setupOtp) {
           setErrorMessage(
-            'This account is pending first-time password setup. Please click "Set Password with OTP" below.'
+            'This account is pending first-time password setup. Please click "Activate Account with OTP" below.'
           );
           setSetupEmail(foundUser.email);
           setIsLoading(false);
@@ -174,11 +156,11 @@ export const LoginPortal: React.FC = () => {
         setErrorMessage(
           users.length === 0
             ? 'No user accounts exist in the system. Please launch Initial Setup below.'
-            : `No registered account found with email "${email}". Please verify your email or contact the administrator.`
+            : `Invalid email or credentials. Please verify your address or contact the institutional administrator.`
         );
       }
       setIsLoading(false);
-    }, 300);
+    }, 350);
   };
 
   // Forgot password submission
@@ -233,7 +215,7 @@ export const LoginPortal: React.FC = () => {
         setShowForgotModal(false);
         setEmail(forgotEmail.trim());
         setPassword(forgotNewPassword);
-        setSuccessMessage('Password reset successfully! You can now sign in.');
+        setSuccessMessage('Password updated successfully! You can now sign in.');
       }
     }, 400);
   };
@@ -249,7 +231,7 @@ export const LoginPortal: React.FC = () => {
       return;
     }
     if (!setupOtp.trim()) {
-      setSetupError('Please enter the 6-digit OTP code received in your email.');
+      setSetupError('Please enter the 6-digit activation OTP code received in your email.');
       return;
     }
     if (setupNewPassword.length < 6) {
@@ -274,16 +256,10 @@ export const LoginPortal: React.FC = () => {
         setPassword(setupNewPassword);
         setTimeout(() => {
           setShowSetupModal(false);
-          setSuccessMessage('Account activated. Click "Sign In" to proceed.');
+          setSuccessMessage('Account activated. Click "Sign In" to access your dashboard.');
         }, 1200);
       }
     }, 400);
-  };
-
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedOtp(key);
-    setTimeout(() => setCopiedOtp(null), 2500);
   };
 
   const themesList: Array<{ id: AppTheme; name: string; desc: string }> = [
@@ -292,152 +268,147 @@ export const LoginPortal: React.FC = () => {
     { id: 'obsidian-black', name: 'Obsidian Black', desc: 'High-contrast pure OLED black mode' },
   ];
 
-  // If system is empty and user clicked Initial Setup Wizard
+  // If system is completely empty and user clicked Initial Setup Wizard
   if (isSystemEmpty && showInitialSetupWizard) {
     return <InitialSetupWizard onCancel={() => setShowInitialSetupWizard(false)} />;
   }
 
   return (
-    <div className="min-h-screen bg-[#070b14] flex flex-col items-center justify-center p-4 selection:bg-indigo-600 selection:text-white">
-      {/* Top Bar with Brand, Outgoing Emails / OTP Simulator, and Theme Switcher */}
-      <div className="w-full max-w-4xl flex items-center justify-between pb-6 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-teal-400 flex items-center justify-center text-white shadow-lg shadow-indigo-950/40">
+    <div className="min-h-screen bg-[#070b14] relative flex flex-col justify-between items-center p-4 sm:p-6 selection:bg-indigo-600 selection:text-white overflow-x-hidden">
+      {/* Background Decorative Ambient Lighting */}
+      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[550px] h-[550px] bg-teal-500/10 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute top-[35%] right-[15%] w-[350px] h-[350px] bg-purple-600/10 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* Top Header Navigation */}
+      <header className="w-full max-w-5xl flex items-center justify-between py-4 z-10 flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-teal-400 flex items-center justify-center text-white shadow-lg shadow-indigo-950/60 ring-1 ring-white/20">
             <GraduationCap className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-sm font-bold text-white tracking-tight">
-              {tenant?.name || 'Academic ERP & OBE Platform'}
-            </span>
-            <span className="hidden sm:inline text-slate-500 text-xs ml-2">
-              &bull; Academic Year 2026–2027
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Outgoing Notification & OTP simulator viewer button */}
-          <button
-            type="button"
-            onClick={() => setShowEmailSimulator(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs font-medium rounded-xl transition-all shadow-sm"
-            title="Inspect outgoing email notifications and OTP codes"
-          >
-            <Mail className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">Email & OTP Log</span>
-            <span className="bg-indigo-950 text-indigo-300 text-[10px] font-mono px-1.5 py-0.2 rounded-full border border-indigo-800">
-              {outgoingEmails.length}
-            </span>
-          </button>
-
-          {/* Theme Picker */}
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
-            <Palette className="w-3.5 h-3.5 text-slate-400 ml-2" />
-            <div className="flex gap-1">
-              {themesList.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setTheme(t.id)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
-                    theme === t.id
-                      ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  }`}
-                  title={t.desc}
-                >
-                  {t.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* STRICT RULE BANNER: Only if everything is empty then on the main login page the initial set up can be done */}
-      {isSystemEmpty && (
-        <div className="w-full max-w-4xl mb-6 p-5 bg-indigo-950/80 border border-indigo-700 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl shadow-indigo-950/40">
-          <div className="flex items-start sm:items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-300 shrink-0 mt-0.5 sm:mt-0">
-              <Sparkles className="w-5 h-5 text-indigo-300" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white uppercase tracking-wider">
-                  Initial Institution Provisioning Required
-                </span>
-                <span className="text-[10px] bg-indigo-900 text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-700">
-                  Database Empty
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 mt-0.5">
-                No institution or administrative accounts exist. Run the guided setup wizard to configure your institution, initial faculty, and regulations.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowInitialSetupWizard(true)}
-            className="px-4 py-2.5 bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-400 hover:to-indigo-500 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-2 whitespace-nowrap self-start sm:self-auto transition-all"
-          >
-            <span>Launch Initial Setup</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Main Login Card */}
-      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-12 gap-6 bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6 sm:p-8">
-        {/* Left Column: Login Form */}
-        <div className="md:col-span-6 space-y-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-indigo-400 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800">
-                Institutional SSO & Auth
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white tracking-tight">
+                {tenant?.name || 'Academic ERP & OBE Platform'}
               </span>
-              <span className="text-xs text-slate-400">NBA / ABET Accredited</span>
+              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/80">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse" />
+                Live Portal
+              </span>
             </div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Portal Authentication</h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Sign in with your university account credentials to access course matrices and mark entry modules.
+            <p className="text-[11px] text-slate-400 font-medium">
+              Outcome-Based Education Management &bull; AY 2026–2027
+            </p>
+          </div>
+        </div>
+
+        {/* Theme Selector */}
+        <div className="flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md border border-slate-800 p-1 rounded-2xl text-xs shadow-sm">
+          <Palette className="w-3.5 h-3.5 text-slate-400 ml-2" />
+          <div className="flex gap-1">
+            {themesList.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTheme(t.id)}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-all ${
+                  theme === t.id
+                    ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
+                }`}
+                title={t.desc}
+              >
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main className="w-full max-w-md my-auto py-8 z-10">
+        {/* System Empty Alert (Only shown when 0 accounts exist) */}
+        {isSystemEmpty && (
+          <div className="mb-6 p-4 bg-indigo-950/90 border border-indigo-700/80 rounded-2xl shadow-xl shadow-indigo-950/40 text-left space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-300 shrink-0 mt-0.5">
+                <Sparkles className="w-4 h-4 text-indigo-300" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Initial Provisioning Required
+                </h4>
+                <p className="text-[11px] text-indigo-200 mt-1 leading-relaxed">
+                  No institution records or administrator credentials exist. Launch the setup wizard to configure your university and primary administrator.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowInitialSetupWizard(true)}
+              className="w-full py-2.5 px-4 bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-400 hover:to-indigo-500 text-white text-xs font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all"
+            >
+              <span>Launch Initial Setup Wizard</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Executive Login Card */}
+        <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800/90 rounded-3xl shadow-2xl shadow-black/80 p-6 sm:p-8 space-y-6">
+          {/* Card Header */}
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/90 border border-slate-700 text-[10px] font-mono font-semibold uppercase tracking-wider text-indigo-300 mb-1">
+              <Lock className="w-3 h-3 text-indigo-400" />
+              <span>Institutional Sign In</span>
+            </div>
+            <h1 className="text-2xl font-black text-white tracking-tight">
+              Sign In to Your Account
+            </h1>
+            <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+              Access outcome attainment matrices, student marks entry, and curriculum governance.
             </p>
           </div>
 
+          {/* Error Message */}
           {errorMessage && (
-            <div className="p-3.5 bg-rose-950/70 border border-rose-800 rounded-xl text-rose-200 text-xs flex items-center gap-2.5">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="p-3.5 bg-rose-950/80 border border-rose-800/90 rounded-2xl text-rose-200 text-xs flex items-start gap-2.5 shadow-sm animate-in fade-in duration-200">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div className="flex-1 text-[11px] leading-relaxed">{errorMessage}</div>
             </div>
           )}
 
+          {/* Success Message */}
           {successMessage && (
-            <div className="p-3.5 bg-emerald-950/70 border border-emerald-800 rounded-xl text-emerald-200 text-xs flex items-center gap-2.5">
+            <div className="p-3.5 bg-emerald-950/80 border border-emerald-800/90 rounded-2xl text-emerald-200 text-xs flex items-center gap-2.5 shadow-sm animate-in fade-in duration-200">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>{successMessage}</span>
+              <span className="text-[11px]">{successMessage}</span>
             </div>
           )}
 
-          <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
+          {/* Form */}
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
-              <label className="font-semibold text-slate-300 block mb-1">
+              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
                 Institutional Email Address
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. admin@institution.edu"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-white placeholder-slate-600 focus:border-indigo-500 focus:outline-none font-mono"
+                  placeholder="name@institution.edu"
+                  className="w-full bg-slate-950/90 border border-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl pl-10 pr-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none transition-all font-mono"
+                  autoComplete="username"
                 />
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="font-semibold text-slate-300">Password</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-300">Password</label>
                 <button
                   type="button"
                   onClick={() => {
@@ -447,25 +418,27 @@ export const LoginPortal: React.FC = () => {
                     setForgotNotice(null);
                     setShowForgotModal(true);
                   }}
-                  className="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline"
+                  className="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline font-medium"
                 >
                   Forgot password?
                 </button>
               </div>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-10 py-2.5 text-white placeholder-slate-600 focus:border-indigo-500 focus:outline-none"
+                  placeholder="Enter your account password"
+                  className="w-full bg-slate-950/90 border border-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none transition-all"
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-slate-500 hover:text-slate-300"
+                  className="absolute right-3.5 top-3 text-slate-500 hover:text-slate-300 p-0.5"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -475,140 +448,75 @@ export const LoginPortal: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-sm transition-all disabled:opacity-50"
+              className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 hover:from-indigo-500 hover:to-indigo-400 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-950/50 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
             >
               <span>{isLoading ? 'Verifying Identity...' : 'Sign In to Portal'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
-          {/* First-time Account Activation with OTP link */}
-          <div className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl flex items-center justify-between text-xs">
-            <span className="text-slate-400">Newly registered account?</span>
-            <button
-              type="button"
-              onClick={() => {
-                setSetupEmail(email);
-                setSetupOtp('');
-                setSetupNewPassword('');
-                setSetupConfirmPassword('');
-                setSetupError(null);
-                setSetupSuccess(null);
-                setShowSetupModal(true);
-              }}
-              className="text-indigo-400 hover:text-indigo-300 font-bold hover:underline flex items-center gap-1"
-            >
-              <Key className="w-3.5 h-3.5" />
-              <span>Set Password with OTP</span>
-            </button>
+          {/* Account Activation Section */}
+          <div className="pt-4 border-t border-slate-800/80">
+            <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-2xl flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Key className="w-4 h-4 text-teal-400 shrink-0" />
+                <span className="text-[11px]">New faculty or student?</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSetupEmail(email);
+                  setSetupOtp('');
+                  setSetupNewPassword('');
+                  setSetupConfirmPassword('');
+                  setSetupError(null);
+                  setSetupSuccess(null);
+                  setShowSetupModal(true);
+                }}
+                className="text-teal-400 hover:text-teal-300 font-semibold hover:underline text-[11px] whitespace-nowrap"
+              >
+                Activate Account with OTP
+              </button>
+            </div>
           </div>
 
-          {/* Security Assurance Badge */}
-          <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+          {/* Trust & Security Indicators */}
+          <div className="pt-2 flex items-center justify-center gap-4 text-[11px] text-slate-400">
             <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>SQLi & XSS Shield Active</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Argon2id Salted</span>
             </div>
-            <span className="font-mono text-[10px] text-slate-500">Argon2id Salted</span>
+            <span>&bull;</span>
+            <div className="flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span>NBA / ABET OBE</span>
+            </div>
+            <span>&bull;</span>
+            <div className="flex items-center gap-1.5">
+              <CheckCircle className="w-3.5 h-3.5 text-cyan-400" />
+              <span>TLS 1.3 Active</span>
+            </div>
           </div>
         </div>
+      </main>
 
-        {/* Right Column: Active Registered Institution Accounts */}
-        <div className="md:col-span-6 bg-slate-950/70 border border-slate-800/80 rounded-2xl p-5 flex flex-col justify-between space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2 text-xs font-bold text-white">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Institutional Logins ({users.length})</span>
-              </div>
-              <span className="text-[10px] text-slate-500 font-mono">Academic ERP</span>
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
-              {users.length === 0
-                ? 'No user accounts currently exist in the database. On reset, all prior logins were deleted. Launch Initial Setup to establish your primary administrator credentials.'
-                : 'Select any registered institution account below to auto-fill credentials, or enter your registered email to sign in.'}
-            </p>
-
-            {users.length === 0 ? (
-              <div className="p-6 bg-slate-900/60 border border-dashed border-slate-800 rounded-2xl text-center space-y-3">
-                <ShieldAlert className="w-10 h-10 text-amber-400 mx-auto" />
-                <div className="text-xs font-bold text-white">Database Clean / 0 Accounts</div>
-                <p className="text-[11px] text-slate-400">
-                  Click the button below to initialize your institution structure and configure the primary administrator account.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowInitialSetupWizard(true)}
-                  className="w-full py-2.5 px-4 bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-400 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Configure Institution &amp; Admin</span>
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
-                {users.map((acc) => {
-                  const isSelected = email.toLowerCase() === acc.email.toLowerCase();
-                  return (
-                    <div
-                      key={acc.id}
-                      onClick={() => handleSelectRealAccount(acc)}
-                      className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                        isSelected
-                          ? 'bg-indigo-950/60 border-indigo-600 shadow-sm'
-                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-white">{acc.fullName}</span>
-                          <span
-                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
-                              acc.role === 'TENANT_ADMIN'
-                                ? 'bg-rose-950 border border-rose-800 text-rose-300'
-                                : acc.role === 'HEAD_OF_FACULTY' || acc.role === 'HEAD_OF_SCHOOL'
-                                ? 'bg-amber-950 border border-amber-800 text-amber-300'
-                                : acc.role === 'HOD'
-                                ? 'bg-blue-950 border border-blue-800 text-blue-300'
-                                : acc.role === 'COURSE_COORDINATOR'
-                                ? 'bg-purple-950 border border-purple-800 text-purple-300'
-                                : acc.role === 'COURSE_FACULTY'
-                                ? 'bg-teal-950 border border-teal-800 text-teal-300'
-                                : 'bg-indigo-950 border border-indigo-800 text-indigo-300'
-                            }`}
-                          >
-                            {acc.role.replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
-                          <span className="font-medium text-slate-300">{acc.department}</span>
-                          <span>&bull;</span>
-                          <span className="font-mono text-slate-500 text-[10px]">{acc.email}</span>
-                        </div>
-                      </div>
-                      {isSelected ? (
-                        <Check className="w-4 h-4 text-indigo-400" />
-                      ) : (
-                        <span className="text-[10px] text-indigo-400 font-semibold hover:underline">
-                          Select
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="text-[10px] text-slate-400 text-center border-t border-slate-800/80 pt-3">
-            Institutional Role-Based Access Control (RBAC) &amp; Argon2id password verification active.
-          </div>
+      {/* Footer */}
+      <footer className="w-full max-w-5xl py-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400 z-10">
+        <div>
+          &copy; {new Date().getFullYear()} {tenant?.name || 'Academic ERP & OBE Platform'}. All rights reserved.
         </div>
-      </div>
+        <div className="flex items-center gap-4 text-[11px]">
+          <span>Role-Based Access Control</span>
+          <span>&bull;</span>
+          <span>Zero Public Account Exposure</span>
+          <span>&bull;</span>
+          <span>Security Hardened</span>
+        </div>
+      </footer>
 
-      {/* MODAL 1: FORGOT PASSWORD (Enforcing Single Self-Service Reset Policy!) */}
+      {/* MODAL 1: FORGOT PASSWORD */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
@@ -616,8 +524,9 @@ export const LoginPortal: React.FC = () => {
                 <h3 className="text-base font-bold text-white">Password Recovery</h3>
               </div>
               <button
+                type="button"
                 onClick={() => setShowForgotModal(false)}
-                className="text-slate-400 hover:text-white p-1"
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -630,7 +539,7 @@ export const LoginPortal: React.FC = () => {
               </div>
             )}
 
-            {/* STRICT POLICY LOCK NOTICE: Subsequent resets locked after first self-service reset! */}
+            {/* STRICT POLICY LOCK NOTICE: Subsequent resets locked after first self-service reset */}
             {forgotNotice && (
               <div className="p-4 bg-amber-950/70 border border-amber-800 rounded-2xl text-amber-200 text-xs space-y-2">
                 <div className="flex items-center gap-2 font-bold text-amber-300">
@@ -641,7 +550,7 @@ export const LoginPortal: React.FC = () => {
                   {forgotNotice}
                 </p>
                 <p className="text-[11px] text-slate-300 pt-1 border-t border-amber-900/60">
-                  Please contact the Main Institutional Administrator (<span className="text-white font-mono">admin@institution.edu</span>) to unlock and issue a master password reset authorization for your account.
+                  Please contact your Institutional Administrator to authorize an additional password reset.
                 </p>
               </div>
             )}
@@ -649,7 +558,7 @@ export const LoginPortal: React.FC = () => {
             {forgotStep === 'REQUEST' && !forgotNotice && (
               <form onSubmit={handleRequestForgotPassword} className="space-y-4 text-xs">
                 <p className="text-slate-400 text-xs leading-relaxed">
-                  Enter your registered institutional email. A secure 6-digit OTP verification code will be dispatched to your inbox.
+                  Enter your registered institutional email. A secure 6-digit OTP code will be dispatched to your inbox.
                 </p>
 
                 <div>
@@ -687,15 +596,8 @@ export const LoginPortal: React.FC = () => {
 
             {forgotStep === 'VERIFY' && !forgotNotice && (
               <form onSubmit={handleVerifyForgotOtpAndReset} className="space-y-4 text-xs">
-                <div className="p-3 bg-indigo-950/50 border border-indigo-800 rounded-xl text-indigo-300 text-xs flex items-center justify-between">
-                  <span>Verification code sent to {forgotEmail}</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowEmailSimulator(true)}
-                    className="text-xs text-indigo-400 font-bold underline hover:text-indigo-300"
-                  >
-                    View OTP Log
-                  </button>
+                <div className="p-3 bg-indigo-950/50 border border-indigo-800/80 rounded-xl text-indigo-300 text-xs">
+                  <span>Verification code sent to your registered institutional inbox ({forgotEmail}).</span>
                 </div>
 
                 <div>
@@ -741,10 +643,6 @@ export const LoginPortal: React.FC = () => {
                   />
                 </div>
 
-                <div className="text-[11px] text-slate-400 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                  Note: Following this reset, further password resets are locked for security and require Main Admin authorization.
-                </div>
-
                 <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
                   <button
                     type="button"
@@ -769,23 +667,24 @@ export const LoginPortal: React.FC = () => {
 
       {/* MODAL 2: FIRST-TIME SETUP / OTP PASSWORD SET ACTIVATION */}
       {showSetupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-400" />
+                <Sparkles className="w-5 h-5 text-teal-400" />
                 <h3 className="text-base font-bold text-white">Activate Account & Set Password</h3>
               </div>
               <button
+                type="button"
                 onClick={() => setShowSetupModal(false)}
-                className="text-slate-400 hover:text-white p-1"
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <p className="text-xs text-slate-400 leading-relaxed">
-              New faculty, coordinators, and students must validate their 6-digit OTP received via email to set their initial account password.
+              New faculty, coordinators, and students must validate their 6-digit OTP received via email to activate their account and set their personal password.
             </p>
 
             {setupError && (
@@ -818,18 +717,9 @@ export const LoginPortal: React.FC = () => {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-semibold text-slate-300">
-                    6-Digit Verification OTP *
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowEmailSimulator(true)}
-                    className="text-[11px] text-indigo-400 hover:text-indigo-300 underline"
-                  >
-                    View OTP in Simulator
-                  </button>
-                </div>
+                <label className="font-semibold text-slate-300 block mb-1">
+                  6-Digit Activation OTP *
+                </label>
                 <input
                   type="text"
                   required
@@ -880,220 +770,12 @@ export const LoginPortal: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSetupLoading}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-sm disabled:opacity-50"
+                  className="px-5 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl shadow-sm disabled:opacity-50"
                 >
                   {isSetupLoading ? 'Activating...' : 'Validate OTP & Activate'}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 3: OUTGOING NOTIFICATION & OTP SIMULATOR DRAWER */}
-      {showEmailSimulator && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
-                  <Inbox className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">
-                    Institutional Email Dispatch & OTP Log
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Live record of emails sent by the portal (First-Time Setup, Password Reset OTPs)
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowEmailSimulator(false)}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-5 flex-1 overflow-y-auto space-y-3">
-              {outgoingEmails.length === 0 ? (
-                <div className="text-center py-12 text-slate-500">
-                  <Mail className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  <p className="text-xs">No email notifications dispatched yet.</p>
-                  <p className="text-[11px] text-slate-600 mt-1">
-                    Creating user accounts or using &quot;Forgot Password&quot; will generate live OTP emails here.
-                  </p>
-                </div>
-              ) : (
-                outgoingEmails.map((mail) => (
-                  <div
-                    key={mail.id}
-                    className="p-4 bg-slate-950 border border-slate-800/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-700 transition-all"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-[9px] font-bold px-2 py-0.5 rounded font-mono ${
-                            mail.type === 'FIRST_TIME_SETUP'
-                              ? 'bg-teal-950 border border-teal-800 text-teal-300'
-                              : mail.type === 'FORGOT_PASSWORD'
-                              ? 'bg-amber-950 border border-amber-800 text-amber-300'
-                              : 'bg-purple-950 border border-purple-800 text-purple-300'
-                          }`}
-                        >
-                          {mail.type.replace(/_/g, ' ')}
-                        </span>
-                        <span className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
-                          <Clock className="w-3 h-3" />
-                          {new Date(mail.sentAt).toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <h4 className="text-xs font-bold text-white">{mail.subject}</h4>
-                      <p className="text-[11px] text-slate-400">
-                        To: <span className="text-slate-200 font-medium">{mail.recipientName}</span> (
-                        <span className="font-mono text-slate-400">{mail.recipientEmail}</span>)
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
-                      {mail.otp && (
-                        <div className="flex items-center gap-1.5 bg-indigo-950/70 border border-indigo-700 px-2.5 py-1.5 rounded-xl">
-                          <span className="text-[10px] text-indigo-400 uppercase font-bold">OTP:</span>
-                          <span className="font-mono font-black text-xs text-white tracking-wider">
-                            {mail.otp}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(mail.otp!, mail.id)}
-                            className="text-indigo-400 hover:text-white ml-1 p-0.5"
-                            title="Copy OTP to clipboard"
-                          >
-                            {copiedOtp === mail.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => setPreviewEmail(mail)}
-                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl transition-colors"
-                      >
-                        Preview
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="p-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 bg-slate-950/50">
-              <span>
-                Configured Gateway: <span className="font-mono text-indigo-400">{emailConfig.host}:{emailConfig.port}</span> ({emailConfig.senderEmail})
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowEmailSimulator(false)}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* EMAIL PREVIEW MODAL */}
-      {previewEmail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Mail className="w-4 h-4 text-indigo-400" />
-                <span>Simulated Email Notification</span>
-              </h3>
-              <button
-                onClick={() => setPreviewEmail(null)}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="bg-white text-slate-900 rounded-2xl p-6 space-y-4 shadow-inner text-xs font-sans">
-              <div className="border-b border-slate-200 pb-3">
-                <div className="text-[11px] text-slate-500">
-                  From: <strong>{emailConfig.senderName}</strong> &lt;{emailConfig.senderEmail}&gt;
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  To: <strong>{previewEmail.recipientName}</strong> &lt;{previewEmail.recipientEmail}&gt;
-                </div>
-                <h4 className="text-sm font-bold text-slate-900 mt-2">{previewEmail.subject}</h4>
-              </div>
-
-              <div className="space-y-3">
-                <p>Dear {previewEmail.recipientName},</p>
-                <p className="text-slate-700">
-                  {previewEmail.type === 'FIRST_TIME_SETUP' &&
-                    `Welcome to ${tenant?.name || 'Academic ERP & OBE Platform'}! An institutional user account has been registered for you.`}
-                  {previewEmail.type === 'FORGOT_PASSWORD' &&
-                    'We received a request to reset your password for your institutional account.'}
-                  {previewEmail.type === 'ADMIN_RESET' &&
-                    'The Main Institutional Administrator has authorized a password reset for your account.'}
-                </p>
-
-                {previewEmail.otp && (
-                  <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl text-center space-y-1">
-                    <span className="text-[11px] text-indigo-800 uppercase tracking-wider font-semibold block">
-                      Your One-Time Password (OTP) Code:
-                    </span>
-                    <span className="text-2xl font-black font-mono text-indigo-600 tracking-widest block">
-                      {previewEmail.otp}
-                    </span>
-                    <span className="text-[10px] text-slate-500">Valid for immediate session verification</span>
-                  </div>
-                )}
-
-                {previewEmail.link && (
-                  <div className="pt-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPreviewEmail(null);
-                        setShowEmailSimulator(false);
-                        if (previewEmail.type === 'FORGOT_PASSWORD') {
-                          setForgotEmail(previewEmail.recipientEmail);
-                          setForgotOtp(previewEmail.otp || '');
-                          setForgotStep('VERIFY');
-                          setShowForgotModal(true);
-                        } else {
-                          setSetupEmail(previewEmail.recipientEmail);
-                          setSetupOtp(previewEmail.otp || '');
-                          setShowSetupModal(true);
-                        }
-                      }}
-                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow"
-                    >
-                      Click Here to Set / Reset Password
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setPreviewEmail(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold"
-              >
-                Close Preview
-              </button>
-            </div>
           </div>
         </div>
       )}

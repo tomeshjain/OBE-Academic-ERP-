@@ -35,12 +35,16 @@ import {
   ShieldCheck,
   UserCheck,
   Key,
+  AlertTriangle,
+  RefreshCw,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const AdminManagementHub: React.FC = () => {
   const {
     tenant,
     adminUser,
+    currentUser,
     users,
     addUser,
     addUsersBatch,
@@ -77,6 +81,22 @@ export const AdminManagementHub: React.FC = () => {
   >('users');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmWord, setResetConfirmWord] = useState('');
+  const [captchaCode, setCaptchaCode] = useState('');
+  const [captchaInput, setCaptchaInput] = useState('');
+
+  const generateCaptcha = () => {
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setCaptchaCode(code);
+    setCaptchaInput('');
+    setResetConfirmWord('');
+  };
 
   // File input refs for Excel uploads
   const studentExcelInputRef = useRef<HTMLInputElement>(null);
@@ -323,17 +343,19 @@ export const AdminManagementHub: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                if (confirm('Are you sure you want to reset all data and restart the initial setup wizard?')) {
-                  resetAllData();
-                }
-              }}
-              className="flex items-center gap-2 px-3 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-semibold rounded-xl transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset & Wipe Data</span>
-            </button>
+            {(currentUser?.role === 'TENANT_ADMIN' || currentUser?.role === 'SUPER_ADMIN') && (
+              <button
+                onClick={() => {
+                  generateCaptcha();
+                  setShowResetModal(true);
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-semibold rounded-xl transition-colors"
+                title="Wipe &amp; Reset Institutional Platform (Administrator Only)"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset &amp; Wipe Data</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1334,6 +1356,123 @@ export const AdminManagementHub: React.FC = () => {
                 Open Submission Window
               </button>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ADMIN SECURE RESET CONFIRMATION MODAL WITH 'RESET' AND CAPTCHA VALIDATION */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-rose-900/60 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl p-6 sm:p-7 space-y-5">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-rose-950/80 border border-rose-700/80 flex items-center justify-center text-rose-400 shrink-0 shadow-inner">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-400 bg-rose-950/80 border border-rose-800 px-2 py-0.5 rounded">
+                    Admin Security Guard
+                  </span>
+                  <span className="text-[11px] text-slate-400">Irreversible Action</span>
+                </div>
+                <h3 className="text-lg font-bold text-white mt-1">
+                  Wipe &amp; Reset Institutional Platform?
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                  This administrative operation permanently deletes all configured faculties, departments, courses, examination blueprints, student rosters, and marks, returning the platform to a clean state.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  1. Type <strong className="text-rose-400 font-mono tracking-widest">RESET</strong> in capital letters to confirm:
+                </label>
+                <input
+                  type="text"
+                  value={resetConfirmWord}
+                  onChange={(e) => setResetConfirmWord(e.target.value)}
+                  placeholder="Type RESET"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm tracking-wider focus:border-rose-500 focus:outline-none"
+                  autoComplete="off"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-300">
+                    2. Security CAPTCHA Verification:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={generateCaptcha}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 hover:underline"
+                    title="Generate new CAPTCHA challenge"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Change Code</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-3 mb-2">
+                  <div
+                    className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-slate-900 via-rose-950/40 to-slate-900 border border-rose-900/50 flex items-center justify-center select-none shadow-inner"
+                    style={{ letterSpacing: '0.45em' }}
+                  >
+                    <span className="font-mono text-xl font-black text-rose-300 italic line-through decoration-rose-500/50 drop-shadow-md">
+                      {captchaCode}
+                    </span>
+                  </div>
+                </div>
+
+                <input
+                  type="text"
+                  value={captchaInput}
+                  onChange={(e) => setCaptchaInput(e.target.value.toUpperCase())}
+                  placeholder="Enter 6-character CAPTCHA"
+                  maxLength={6}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm tracking-widest uppercase focus:border-rose-500 focus:outline-none"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-[11px] text-slate-500">
+                {resetConfirmWord === 'RESET' && captchaInput.toUpperCase() === captchaCode.toUpperCase() ? (
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Verification passed</span>
+                  </span>
+                ) : (
+                  <span>Both RESET and Captcha required</span>
+                )}
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (resetConfirmWord === 'RESET' && captchaInput.toUpperCase() === captchaCode.toUpperCase()) {
+                      resetAllData();
+                      setShowResetModal(false);
+                    }
+                  }}
+                  disabled={resetConfirmWord !== 'RESET' || captchaInput.toUpperCase() !== captchaCode.toUpperCase()}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed shadow-md shadow-rose-950/50 transition-all flex items-center gap-2"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Execute Platform Wipe</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
