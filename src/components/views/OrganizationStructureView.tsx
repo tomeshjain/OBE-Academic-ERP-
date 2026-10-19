@@ -786,7 +786,14 @@ export const OrganizationStructureView: React.FC = () => {
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        {academicScope.canCreateFaculty && (
+                        {f.headUserId === currentUser?.id || (academicScope.isHeadOfFaculty && academicScope.ledFaculty?.id === f.id) ? (
+                          <span
+                            className="p-1 text-slate-500 cursor-not-allowed flex items-center"
+                            title="Protected Leadership Entity: A Head of Faculty cannot delete their own Faculty."
+                          >
+                            <Lock className="w-3.5 h-3.5 text-slate-500" />
+                          </span>
+                        ) : academicScope.canCreateFaculty ? (
                           <button
                             onClick={() => {
                               if (confirm(`Delete faculty "${f.name}"?`)) {
@@ -799,7 +806,7 @@ export const OrganizationStructureView: React.FC = () => {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 
@@ -936,7 +943,14 @@ export const OrganizationStructureView: React.FC = () => {
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        {academicScope.canCreateSchool && (
+                        {s.headUserId === currentUser?.id || (academicScope.isHeadOfSchool && academicScope.ledSchool?.id === s.id) ? (
+                          <span
+                            className="p-1 text-slate-500 cursor-not-allowed flex items-center"
+                            title="Protected Leadership Entity: A Head of School cannot delete their own School."
+                          >
+                            <Lock className="w-3.5 h-3.5 text-slate-500" />
+                          </span>
+                        ) : academicScope.canCreateSchool ? (
                           <button
                             onClick={() => {
                               if (confirm(`Delete school "${s.name}"?`)) {
@@ -949,7 +963,7 @@ export const OrganizationStructureView: React.FC = () => {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 
@@ -1088,7 +1102,14 @@ export const OrganizationStructureView: React.FC = () => {
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        {academicScope.canCreateDepartment && (
+                        {d.headUserId === currentUser?.id || (academicScope.isHod && academicScope.ledDepartment?.id === d.id) ? (
+                          <span
+                            className="p-1 text-slate-500 cursor-not-allowed flex items-center"
+                            title="Protected Leadership Entity: A Head of Department cannot delete their own Department."
+                          >
+                            <Lock className="w-3.5 h-3.5 text-slate-500" />
+                          </span>
+                        ) : academicScope.canCreateDepartment ? (
                           <button
                             onClick={() => {
                               if (confirm(`Delete department "${d.name}"?`)) {
@@ -1101,7 +1122,7 @@ export const OrganizationStructureView: React.FC = () => {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 

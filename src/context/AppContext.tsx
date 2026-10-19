@@ -357,6 +357,7 @@ interface AppContextType {
   activeWindowId: string | null;
   setActiveWindowId: (id: string | null) => void;
   addAssessmentWindow: (win: Omit<AssessmentWindowRecord, 'id'>) => void;
+  bulkUpsertAssessmentWindows: (windows: Array<Omit<AssessmentWindowRecord, 'id'> & { id?: string }>) => void;
   updateAssessmentWindow: (window: AssessmentWindowRecord) => void;
   deleteAssessmentWindow: (id: string) => void;
   extendAssessmentWindowDeadline: (
@@ -1277,6 +1278,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteFaculty = (id: string) => {
+    const targetFac = faculties.find((f) => f.id === id);
+    if (!targetFac) return;
+
+    // Governance Restriction: Head of Faculty cannot delete their own Faculty!
+    if (currentUser?.id && targetFac.headUserId === currentUser.id) {
+      alert(`Governance Restriction: As Head of Faculty for "${targetFac.name}", you cannot delete your own Faculty.`);
+      return;
+    }
+    // Only system or tenant administrators can delete an Academic Faculty
+    if (currentUser && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'TENANT_ADMIN') {
+      alert('Governance Restriction: Only System/Tenant Administrators can delete an Academic Faculty.');
+      return;
+    }
+
     setFaculties((prev) => prev.filter((f) => f.id !== id));
   };
 
@@ -1302,6 +1317,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteSchool = (id: string) => {
+    const targetSch = schools.find((s) => s.id === id);
+    if (!targetSch) return;
+
+    // Governance Restriction: Head of School cannot delete their own School!
+    if (currentUser?.id && targetSch.headUserId === currentUser.id) {
+      alert(`Governance Restriction: As Head of School for "${targetSch.name}", you cannot delete your own School.`);
+      return;
+    }
+    // Only Admin or Head of Faculty can delete a school
+    if (
+      currentUser &&
+      currentUser.role !== 'SUPER_ADMIN' &&
+      currentUser.role !== 'TENANT_ADMIN' &&
+      currentUser.role !== 'HEAD_OF_FACULTY'
+    ) {
+      alert('Governance Restriction: Only Administrators or Head of Faculty can delete a School.');
+      return;
+    }
+
     setSchools((prev) => prev.filter((s) => s.id !== id));
   };
 
@@ -1327,6 +1361,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteDepartment = (id: string) => {
+    const targetDept = departments.find((d) => d.id === id);
+    if (!targetDept) return;
+
+    // Governance Restriction: Head of Department cannot delete their own Department!
+    if (currentUser?.id && targetDept.headUserId === currentUser.id) {
+      alert(`Governance Restriction: As Head of Department for "${targetDept.name}", you cannot delete your own Department.`);
+      return;
+    }
+    // Only Admin, Head of Faculty, or Head of School can delete a department
+    if (
+      currentUser &&
+      currentUser.role !== 'SUPER_ADMIN' &&
+      currentUser.role !== 'TENANT_ADMIN' &&
+      currentUser.role !== 'HEAD_OF_FACULTY' &&
+      currentUser.role !== 'HEAD_OF_SCHOOL'
+    ) {
+      alert('Governance Restriction: Only Administrators, Head of Faculty, or Head of School can delete a Department.');
+      return;
+    }
+
     setDepartments((prev) => prev.filter((d) => d.id !== id));
   };
 
@@ -1824,6 +1878,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     }
+  };
+
+  const bulkUpsertAssessmentWindows = (
+    windows: Array<Omit<AssessmentWindowRecord, 'id'> & { id?: string }>
+  ) => {
+    setAssessmentWindows((prev) => {
+      const next = [...prev];
+      windows.forEach((win) => {
+        const existingIdx = next.findIndex(
+          (w) =>
+            (win.id && w.id === win.id) ||
+            (win.courseId &&
+              w.courseId === win.courseId &&
+              w.subComponentId === win.subComponentId &&
+              w.sectionId === win.sectionId)
+        );
+
+        if (existingIdx >= 0) {
+          next[existingIdx] = {
+            ...next[existingIdx],
+            ...win,
+            id: next[existingIdx].id,
+          };
+        } else {
+          const newId = win.id || `win-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          next.push({
+            ...win,
+            id: newId,
+            courseId: win.courseId || activeCourseId || '',
+          });
+        }
+      });
+      return next;
+    });
   };
 
   const updateAssessmentWindow = (window: AssessmentWindowRecord) => {
@@ -2619,6 +2707,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeWindowId,
         setActiveWindowId,
         addAssessmentWindow,
+        bulkUpsertAssessmentWindows,
         updateAssessmentWindow,
         deleteAssessmentWindow,
         extendAssessmentWindowDeadline,

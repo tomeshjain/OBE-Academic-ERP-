@@ -53,6 +53,7 @@ import {
   LayoutGrid,
   Table as TableIcon,
   X,
+  Search,
 } from 'lucide-react';
 import { BulkDataUploadModal, BulkUploadColumn } from '@/components/BulkDataUploadModal';
 import { sanitizeInput } from '@/lib/security';
@@ -71,6 +72,7 @@ export const AssessmentQuestionsView: React.FC = () => {
     activeWindowId,
     setActiveWindowId,
     addAssessmentWindow,
+    bulkUpsertAssessmentWindows,
     updateAssessmentWindow,
     deleteAssessmentWindow,
     questionPapers,
@@ -137,6 +139,380 @@ export const AssessmentQuestionsView: React.FC = () => {
     }
     return true;
   });
+
+  // Assessment Windows Matrix Bulk Schedule & Filter State
+  const windowsScheduleFileRef = useRef<HTMLInputElement>(null);
+  const [windowsSearchQuery, setWindowsSearchQuery] = useState('');
+  const [windowsCourseFilter, setWindowsCourseFilter] = useState('ALL');
+  const [windowsStatusFilter, setWindowsStatusFilter] = useState<'ALL' | 'OPEN' | 'OVERDUE' | 'LOCKED' | 'EXTENDED'>('ALL');
+
+  // Download Schedule Matrix pre-populated with ALL Course x SubComponent x Section x Faculty combinations
+  const handleDownloadScheduleMatrix = () => {
+    const header = [
+      'Course Code',
+      'Course Title',
+      'Assessment Component',
+      'Section',
+      'Assigned Faculty',
+      'Faculty Email',
+      'Start Date (YYYY-MM-DD HH:MM)',
+      'Deadline (YYYY-MM-DD HH:MM)',
+      'Status',
+      'Course ID',
+      'SubComponent ID',
+      'Section ID',
+      'Window ID',
+    ];
+
+    const rows: string[][] = [];
+    const targetCourses = windowsCourseFilter !== 'ALL'
+      ? courses.filter((c) => c.id === windowsCourseFilter)
+      : displayedCourses;
+
+    targetCourses.forEach((c) => {
+      const subs = scoringSubComponents.filter((s) => !s.courseId || s.courseId === c.id);
+      const secs = courseSections.filter((s) => s.courseId === c.id);
+
+      const effectiveSubs = subs.length > 0 ? subs : [
+        { id: `sub-cie1-${c.id}`, name: 'Continuous Internal Evaluation (CIE) - 1' },
+        { id: `sub-cie2-${c.id}`, name: 'Continuous Internal Evaluation (CIE) - 2' },
+        { id: `sub-see-${c.id}`, name: 'Semester End Examination (SEE)' },
+      ];
+
+      const effectiveSecs = secs.length > 0 ? secs : [
+        { id: `sec-a-${c.id}`, name: 'Section A', facultyName: 'Assigned Faculty', facultyId: '' },
+      ];
+
+      effectiveSubs.forEach((sub) => {
+        effectiveSecs.forEach((sec) => {
+          const existingWin = assessmentWindows.find(
+            (w) =>
+              (w.courseId === c.id || !w.courseId) &&
+              w.subComponentId === sub.id &&
+              w.sectionId === sec.id
+          );
+
+          const faculty = users.find((u) => u.id === (existingWin?.facultyId || sec.facultyId));
+          const facName = existingWin?.facultyName || faculty?.fullName || sec.facultyName || 'Dr. Ramesh Kumar';
+          const facEmail = faculty?.email || '';
+
+          const openFormatted = existingWin?.openDateTime
+            ? existingWin.openDateTime.replace('T', ' ').slice(0, 16)
+            : new Date().toISOString().slice(0, 10) + ' 09:00';
+
+          const closeFormatted = existingWin?.closeDateTime
+            ? existingWin.closeDateTime.replace('T', ' ').slice(0, 16)
+            : new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10) + ' 23:59';
+
+          const status = existingWin?.status || 'OPEN';
+
+          rows.push([
+            c.code,
+            c.title,
+            sub.name,
+            sec.name,
+            facName,
+            facEmail,
+            openFormatted,
+            closeFormatted,
+            status,
+            c.id,
+            sub.id,
+            sec.id,
+            existingWin?.id || '',
+          ]);
+        });
+      });
+    });
+
+    const csvContent =
+      '\uFEFF' +
+      [
+        header.map((h) => `"${h.replace(/"/g, '""')}"`).join(','),
+        ...rows.map((row) => row.map((cell) => `"${String(cell || '').replace(/"/g, '""')}"`).join(',')),
+      ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Assessment_Windows_Schedule_Matrix_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showMsg(`Downloaded schedule matrix with ${rows.length} combinations. Update dates and upload to schedule!`);
+  };
+
+  // Bulk Upload Assessment Windows CSV
+  const handleUploadScheduleMatrix = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        if (!text) return;
+
+        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        if (lines.length < 2) {
+          showMsg('CSV file is empty or missing data rows.', 'error');
+          return;
+        }
+
+        const parseLine = (line: string): string[] => {
+          const cells: string[] = [];
+          let cur = '';
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+              if (inQuotes && line[i + 1] === '"') {
+                cur += '"';
+                i++;
+              } else {
+                inQuotes = !inQuotes;
+              }
+            } else if (ch === ',' && !inQuotes) {
+              cells.push(cur.trim());
+              cur = '';
+            } else {
+              cur += ch;
+            }
+          }
+          cells.push(cur.trim());
+          return cells;
+        };
+
+        const headers = parseLine(lines[0]).map((h) => h.toLowerCase());
+        const getIdx = (name: string, fallbackIdx: number) => {
+          const found = headers.findIndex((h) => h.includes(name.toLowerCase()));
+          return found >= 0 ? found : fallbackIdx;
+        };
+
+        const courseIdIdx = getIdx('course id', 9);
+        const subCompIdIdx = getIdx('subcomponent id', 10);
+        const sectionIdIdx = getIdx('section id', 11);
+        const windowIdIdx = getIdx('window id', 12);
+        const courseCodeIdx = getIdx('course code', 0);
+        const assessmentNameIdx = getIdx('assessment component', 2);
+        const sectionNameIdx = getIdx('section', 3);
+        const facultyNameIdx = getIdx('faculty name', 4);
+        const facultyEmailIdx = getIdx('faculty email', 5);
+        const startDateIdx = getIdx('start date', 6);
+        const deadlineIdx = getIdx('deadline', 7);
+        const statusIdx = getIdx('status', 8);
+
+        const itemsToUpsert: Array<Omit<AssessmentWindowRecord, 'id'> & { id?: string }> = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = parseLine(lines[i]);
+          if (cols.length < 5) continue;
+
+          let courseId = cols[courseIdIdx] || '';
+          let subCompId = cols[subCompIdIdx] || '';
+          let sectionId = cols[sectionIdIdx] || '';
+          const windowId = cols[windowIdIdx] || '';
+          const subComponentName = cols[assessmentNameIdx] || 'Assessment Component';
+          const facName = cols[facultyNameIdx] || '';
+          const facEmail = cols[facultyEmailIdx] || '';
+          const rawStart = cols[startDateIdx] || '';
+          const rawDeadline = cols[deadlineIdx] || '';
+          const rawStatus = (cols[statusIdx] || 'OPEN').toUpperCase();
+
+          if (!courseId) {
+            const courseCode = cols[courseCodeIdx];
+            const matched = courses.find((c) => c.code.toLowerCase() === courseCode?.toLowerCase());
+            if (matched) courseId = matched.id;
+          }
+          if (!subCompId) {
+            const matched = scoringSubComponents.find((s) => s.name.toLowerCase() === subComponentName.toLowerCase());
+            if (matched) subCompId = matched.id;
+          }
+          if (!sectionId) {
+            const secName = cols[sectionNameIdx];
+            const matched = courseSections.find((s) => s.name.toLowerCase() === secName?.toLowerCase() && (!courseId || s.courseId === courseId));
+            if (matched) sectionId = matched.id;
+          }
+
+          if (!courseId) courseId = activeCourse?.id || courses[0]?.id || '';
+          if (!subCompId) subCompId = `sub-${Date.now()}-${i}`;
+          if (!sectionId) sectionId = courseSections[0]?.id || 'sec-a';
+
+          let matchedFaculty = users.find((u) => facEmail && u.email.toLowerCase() === facEmail.toLowerCase());
+          if (!matchedFaculty && facName) {
+            matchedFaculty = users.find((u) => u.fullName.toLowerCase() === facName.toLowerCase());
+          }
+
+          let openDateTime = new Date().toISOString();
+          if (rawStart) {
+            const parsed = new Date(rawStart.replace(' ', 'T'));
+            if (!isNaN(parsed.getTime())) openDateTime = parsed.toISOString();
+          }
+
+          let closeDateTime = new Date(Date.now() + 14 * 86400000).toISOString();
+          if (rawDeadline) {
+            const parsed = new Date(rawDeadline.replace(' ', 'T'));
+            if (!isNaN(parsed.getTime())) closeDateTime = parsed.toISOString();
+          }
+
+          const validStatus: AssessmentWindowStatus = [
+            'OPEN',
+            'DRAFT',
+            'LOCKED',
+            'SUBMITTED',
+            'UNLOCKED_BY_ADMIN',
+            'FROZEN',
+          ].includes(rawStatus as any)
+            ? (rawStatus as AssessmentWindowStatus)
+            : 'OPEN';
+
+          const qp = getOrCreateQuestionPaperForSubComponent(subCompId, courseId, subComponentName);
+
+          itemsToUpsert.push({
+            id: windowId || undefined,
+            courseId,
+            sectionId,
+            subComponentId: subCompId,
+            subComponentName,
+            questionPaperId: qp.id,
+            status: validStatus,
+            facultyId: matchedFaculty?.id || undefined,
+            facultyName: matchedFaculty?.fullName || facName || 'Course Faculty',
+            openDateTime,
+            closeDateTime,
+          });
+        }
+
+        if (itemsToUpsert.length > 0) {
+          bulkUpsertAssessmentWindows(itemsToUpsert);
+          showMsg(`Bulk Upload Successful! Updated and scheduled ${itemsToUpsert.length} assessment submission windows.`);
+        } else {
+          showMsg('No valid assessment rows could be parsed from the CSV.', 'error');
+        }
+      } catch (err: any) {
+        showMsg(`Error parsing CSV: ${err.message || 'Invalid format'}`, 'error');
+      } finally {
+        if (windowsScheduleFileRef.current) windowsScheduleFileRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Auto-schedule missing windows with default +14 days deadline
+  const handleAutoScheduleAll = () => {
+    const targetCourses = displayedCourses;
+    const itemsToUpsert: Array<Omit<AssessmentWindowRecord, 'id'>> = [];
+
+    targetCourses.forEach((c) => {
+      const subs = scoringSubComponents.filter((s) => !s.courseId || s.courseId === c.id);
+      const secs = courseSections.filter((s) => s.courseId === c.id);
+
+      const effectiveSubs = subs.length > 0 ? subs : [
+        { id: `sub-cie1-${c.id}`, name: 'Continuous Internal Evaluation (CIE) - 1' },
+        { id: `sub-cie2-${c.id}`, name: 'Continuous Internal Evaluation (CIE) - 2' },
+        { id: `sub-see-${c.id}`, name: 'Semester End Examination (SEE)' },
+      ];
+
+      const effectiveSecs = secs.length > 0 ? secs : [
+        { id: `sec-a-${c.id}`, name: 'Section A', facultyName: 'Assigned Faculty', facultyId: '' },
+      ];
+
+      effectiveSubs.forEach((sub) => {
+        effectiveSecs.forEach((sec) => {
+          const existingWin = assessmentWindows.find(
+            (w) =>
+              (w.courseId === c.id || !w.courseId) &&
+              w.subComponentId === sub.id &&
+              w.sectionId === sec.id
+          );
+
+          if (!existingWin) {
+            const qp = getOrCreateQuestionPaperForSubComponent(sub.id, c.id, sub.name);
+            itemsToUpsert.push({
+              courseId: c.id,
+              sectionId: sec.id,
+              subComponentId: sub.id,
+              subComponentName: sub.name,
+              questionPaperId: qp.id,
+              status: 'OPEN',
+              facultyId: sec.facultyId || undefined,
+              facultyName: sec.facultyName || 'Course Faculty',
+              openDateTime: new Date().toISOString(),
+              closeDateTime: new Date(Date.now() + 14 * 86400000).toISOString(),
+            });
+          }
+        });
+      });
+    });
+
+    if (itemsToUpsert.length === 0) {
+      showMsg('All assessment and section combinations are already scheduled.');
+      return;
+    }
+
+    bulkUpsertAssessmentWindows(itemsToUpsert);
+    showMsg(`Auto-scheduled ${itemsToUpsert.length} missing assessment submission windows with +14 days deadline.`);
+  };
+
+  // Batch extend active deadlines by +7 days
+  const handleBatchExtendActive = () => {
+    const activeWins = visibleAssessmentWindows.filter((w) => w.status !== 'FROZEN' && w.status !== 'LOCKED');
+    if (activeWins.length === 0) {
+      showMsg('No active assessment windows found to extend.', 'error');
+      return;
+    }
+
+    const updated = activeWins.map((w) => {
+      const currentClose = new Date(w.closeDateTime).getTime();
+      const base = currentClose < Date.now() ? Date.now() : currentClose;
+      const newClose = new Date(base + 7 * 86400000).toISOString();
+      return {
+        ...w,
+        closeDateTime: newClose,
+        status: 'UNLOCKED_BY_ADMIN' as AssessmentWindowStatus,
+        unlockAuditReason: `Batch extended by 7 days on ${new Date().toLocaleDateString()}`,
+      };
+    });
+
+    bulkUpsertAssessmentWindows(updated);
+    showMsg(`Extended deadlines for ${updated.length} assessment windows by +7 days.`);
+  };
+
+  // Filtered Assessment Windows with Search & Status filters
+  const filteredAssessmentWindows = useMemo(() => {
+    return visibleAssessmentWindows.filter((win) => {
+      if (windowsCourseFilter !== 'ALL' && win.courseId && win.courseId !== windowsCourseFilter) {
+        return false;
+      }
+      const isOverdue = new Date() > new Date(win.closeDateTime);
+      if (windowsStatusFilter === 'OPEN' && (isOverdue || win.status === 'LOCKED' || win.status === 'FROZEN')) {
+        return false;
+      }
+      if (windowsStatusFilter === 'OVERDUE' && !isOverdue) {
+        return false;
+      }
+      if (windowsStatusFilter === 'LOCKED' && win.status !== 'LOCKED' && win.status !== 'FROZEN') {
+        return false;
+      }
+      if (windowsStatusFilter === 'EXTENDED' && win.status !== 'UNLOCKED_BY_ADMIN') {
+        return false;
+      }
+      if (windowsSearchQuery.trim()) {
+        const q = windowsSearchQuery.toLowerCase();
+        const course = courses.find((c) => c.id === win.courseId);
+        const section = courseSections.find((s) => s.id === win.sectionId);
+        const matchesName = win.subComponentName.toLowerCase().includes(q);
+        const matchesCourse = course?.code.toLowerCase().includes(q) || course?.title.toLowerCase().includes(q);
+        const matchesSec = section?.name.toLowerCase().includes(q);
+        const matchesFac = win.facultyName?.toLowerCase().includes(q);
+        if (!matchesName && !matchesCourse && !matchesSec && !matchesFac) return false;
+      }
+      return true;
+    });
+  }, [visibleAssessmentWindows, windowsCourseFilter, windowsStatusFilter, windowsSearchQuery, courses, courseSections]);
 
   // Filter subcomponents for active course
   const currentSubComponents = scoringSubComponents.filter(
@@ -1550,41 +1926,155 @@ export const AssessmentQuestionsView: React.FC = () => {
               </p>
             </div>
 
-            {(canUnlockOrExtendDeadline || canManageCourse) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={windowsScheduleFileRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleUploadScheduleMatrix}
+              />
+
               <button
-                onClick={() => {
-                  const defCourseId = activeCourse?.id || courses[0]?.id || '';
-                  const defSubs = scoringSubComponents.filter((s) => !s.courseId || s.courseId === defCourseId);
-                  const defSec = courseSections.find((s) => s.courseId === defCourseId);
-                  setWindowCourseId(defCourseId);
-                  setWindowSubCompId(defSubs[0]?.id || '');
-                  setWindowSectionId(defSec?.id || '');
-                  setWindowFacultyId(defSec?.facultyId || '');
-                  setOpenDate(new Date().toISOString().slice(0, 16));
-                  setCloseDate(new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 16));
-                  setExtendReason('');
-                  setEditingWindowId(null);
-                  setModalType('addWindow');
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto"
+                onClick={handleDownloadScheduleMatrix}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                title="Download pre-populated CSV matrix of all Course x Section x Faculty x Assessment combinations"
               >
-                <Plus className="w-4 h-4" />
-                <span>Configure Assessment Window</span>
+                <Download className="w-4 h-4 text-indigo-400" />
+                <span>Download Schedule Matrix (CSV)</span>
               </button>
-            )}
+
+              <button
+                onClick={() => windowsScheduleFileRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-2 bg-teal-950/80 hover:bg-teal-900 border border-teal-700 text-teal-200 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                title="Bulk upload updated submission dates and deadlines"
+              >
+                <Upload className="w-4 h-4 text-teal-400" />
+                <span>Bulk Upload Windows</span>
+              </button>
+
+              <button
+                onClick={handleAutoScheduleAll}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                title="Auto-schedule all unconfigured combinations with default +14 days submission window"
+              >
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>Auto-Schedule All (+14D)</span>
+              </button>
+
+              <button
+                onClick={handleBatchExtendActive}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                title="Extend all active deadlines by 7 days"
+              >
+                <Clock className="w-4 h-4 text-blue-400" />
+                <span>Batch Extend (+7D)</span>
+              </button>
+
+              {(canUnlockOrExtendDeadline || canManageCourse) && (
+                <button
+                  onClick={() => {
+                    const defCourseId = activeCourse?.id || courses[0]?.id || '';
+                    const defSubs = scoringSubComponents.filter((s) => !s.courseId || s.courseId === defCourseId);
+                    const defSec = courseSections.find((s) => s.courseId === defCourseId);
+                    setWindowCourseId(defCourseId);
+                    setWindowSubCompId(defSubs[0]?.id || '');
+                    setWindowSectionId(defSec?.id || '');
+                    setWindowFacultyId(defSec?.facultyId || '');
+                    setOpenDate(new Date().toISOString().slice(0, 16));
+                    setCloseDate(new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 16));
+                    setExtendReason('');
+                    setEditingWindowId(null);
+                    setModalType('addWindow');
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Configure Window</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          {visibleAssessmentWindows.length === 0 ? (
-            <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-12 text-center space-y-2">
+          {/* Quick Filter & Search Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
+            <div className="flex items-center gap-2 flex-wrap flex-1 min-w-[280px]">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={windowsSearchQuery}
+                  onChange={(e) => setWindowsSearchQuery(e.target.value)}
+                  placeholder="Search assessment, course, faculty..."
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <select
+                value={windowsCourseFilter}
+                onChange={(e) => setWindowsCourseFilter(e.target.value)}
+                className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-indigo-500"
+              >
+                <option value="ALL">All Courses ({displayedCourses.length})</option>
+                {displayedCourses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.code} - {c.title}
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center bg-slate-900 rounded-xl p-1 border border-slate-800 text-xs">
+                {(['ALL', 'OPEN', 'OVERDUE', 'LOCKED', 'EXTENDED'] as const).map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setWindowsStatusFilter(st)}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                      windowsStatusFilter === st
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {st === 'ALL'
+                      ? 'All'
+                      : st === 'OPEN'
+                      ? 'Open'
+                      : st === 'OVERDUE'
+                      ? 'Overdue'
+                      : st === 'LOCKED'
+                      ? 'Locked'
+                      : 'Extended'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="text-xs text-slate-400 font-mono">
+              Showing {filteredAssessmentWindows.length} of {assessmentWindows.length} windows
+            </div>
+          </div>
+
+          {filteredAssessmentWindows.length === 0 ? (
+            <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-12 text-center space-y-3">
               <Clock className="w-12 h-12 text-slate-600 mx-auto mb-2" />
-              <h3 className="text-base font-bold text-white">No Assessment Windows Configured</h3>
+              <h3 className="text-base font-bold text-white">No Assessment Windows Match Filters</h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Configure submission deadlines for Continuous Internal Evaluations (CIE) or Semester End Examinations (SEE).
+                No configured submission windows found. Download the schedule matrix CSV to batch-schedule or click "Auto-Schedule All (+14D)".
               </p>
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button
+                  onClick={handleAutoScheduleAll}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                >
+                  Auto-Schedule All (+14D)
+                </button>
+                <button
+                  onClick={handleDownloadScheduleMatrix}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Download Schedule Matrix
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {visibleAssessmentWindows.map((win) => {
+              {filteredAssessmentWindows.map((win) => {
                 const isOverdue = new Date() > new Date(win.closeDateTime);
                 const section = courseSections.find((s) => s.id === win.sectionId);
                 const course = courses.find((c) => c.id === win.courseId);

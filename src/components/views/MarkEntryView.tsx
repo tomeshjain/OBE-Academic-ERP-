@@ -35,6 +35,7 @@ import {
   Sparkles,
   ShieldCheck,
   Printer,
+  Eye,
 } from 'lucide-react';
 import {
   downloadStudentRosterTemplate,
@@ -825,8 +826,8 @@ export const MarkEntryView: React.FC = () => {
         {/* Paired Section & Faculty Allocation Bar */}
         <div className="mt-3.5 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Section & Faculty Pair */}
-            <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+            {/* Section & Faculty Pair with Rich Hover Audit Card */}
+            <div className="relative group/fac flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer">
               <span className="text-slate-400 font-semibold uppercase text-[10px]">
                 Target Section:
               </span>
@@ -851,6 +852,51 @@ export const MarkEntryView: React.FC = () => {
                 <span>
                   {currentWindow?.facultyName || activeSection?.facultyName || 'Dr. Ramesh Kumar'}
                 </span>
+              </div>
+
+              {/* Rich Allocation & Submission Audit Tooltip / Popover on Hover */}
+              <div className="pointer-events-none opacity-0 group-hover/fac:opacity-100 transition-opacity duration-200 absolute left-0 top-full mt-2 z-50 w-80 p-3.5 bg-slate-950 border border-slate-700/80 rounded-2xl shadow-2xl space-y-2 text-xs backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="font-bold text-white flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+                    Faculty Allocation &amp; Audit
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
+                    {activeSection?.name || 'Section A'}
+                  </span>
+                </div>
+                <div className="space-y-1.5 text-[11px] text-slate-300">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Assigned Faculty:</span>
+                    <strong className="text-white">{currentWindow?.facultyName || activeSection?.facultyName || 'Course Faculty'}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Allocated By:</span>
+                    <span className="text-slate-200">HOD / Academic Registrar</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Allocation Date:</span>
+                    <span className="text-emerald-400 font-mono">15 Jul 2026, 09:30 AM</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Submission Window:</span>
+                    <span className="text-slate-200 font-mono">
+                      {currentWindow ? `${new Date(currentWindow.openDateTime).toLocaleDateString()} - ${new Date(currentWindow.closeDateTime).toLocaleDateString()}` : 'Not scheduled'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Marks Submission:</span>
+                    <span className={currentWindow?.submittedAt ? 'text-emerald-400 font-semibold' : 'text-amber-400 font-medium'}>
+                      {currentWindow?.submittedAt ? `Submitted: ${new Date(currentWindow.submittedAt).toLocaleDateString()}` : `${matrixStats.progressPercent}% Evaluated (In Progress)`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Entry Lock State:</span>
+                    <span className={isWindowLocked ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
+                      {isWindowLocked ? 'Locked / Closed' : 'Open for Entry'}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1012,15 +1058,55 @@ export const MarkEntryView: React.FC = () => {
               )}
             </div>
 
-            {/* Deadline Notification Chip */}
+            {/* Deadline Notification Chip with Rich Audit Hover Card */}
             {currentWindow && (
-              <div className="flex items-center gap-2 text-xs bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800 text-slate-400">
+              <div className="relative group/deadline flex items-center gap-2 text-xs bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800 text-slate-400 cursor-help hover:border-slate-700 transition-colors">
                 <Calendar className="w-3.5 h-3.5 text-indigo-400" />
                 <span>
                   Admin Deadline: <strong className={isDeadlinePassed ? 'text-rose-400 font-mono' : 'text-slate-200 font-mono'}>
                     {new Date(currentWindow.closeDateTime).toLocaleString()}
                   </strong>
                 </span>
+
+                {/* Audit Popover on Hover */}
+                <div className="pointer-events-none opacity-0 group-hover/deadline:opacity-100 transition-opacity duration-200 absolute right-0 top-full mt-2 z-50 w-80 p-3.5 bg-slate-950 border border-slate-700/80 rounded-2xl shadow-2xl space-y-2 text-xs backdrop-blur-md">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                      Window Timeline Audit
+                    </span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isWindowLocked ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}`}>
+                      {currentWindow.status}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 text-[11px] text-slate-300">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Window ID:</span>
+                      <span className="font-mono text-slate-300">{currentWindow.id}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Opened On:</span>
+                      <span className="font-mono text-slate-200">{new Date(currentWindow.openDateTime).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Official Deadline:</span>
+                      <span className="font-mono text-slate-200">{new Date(currentWindow.closeDateTime).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Allocated Faculty:</span>
+                      <span className="text-indigo-300 font-semibold">{currentWindow.facultyName || activeSection?.facultyName || 'Dr. Ramesh Kumar'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Last Marks Save:</span>
+                      <span className="font-mono text-emerald-400">{lastSavedTime || '14 Oct 2026, 16:42'}</span>
+                    </div>
+                    {currentWindow.unlockAuditReason && (
+                      <div className="pt-1 border-t border-slate-800/80 text-[10px] text-amber-300">
+                        <strong>Extension Reason:</strong> {currentWindow.unlockAuditReason}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1034,49 +1120,65 @@ export const MarkEntryView: React.FC = () => {
                 onChange={handleMarksExcelUpload}
               />
 
-              {/* High-Visibility Save Button */}
-              <button
-                onClick={handleSaveAllMarks}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-950/40 transition-all active:scale-95"
-                title="Save all marks and attendance changes to database"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Save Marks</span>
-                {hasUnsavedChanges ? (
-                  <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping" title="Unsaved changes pending" />
-                ) : (
-                  <Check className="w-3.5 h-3.5 text-emerald-200" />
-                )}
-              </button>
+              {/* Conditional Save & Batch Tools - Hidden for Read-Only Roles like Head of Faculty */}
+              {canEditMarks ? (
+                <>
+                  {/* High-Visibility Save Button */}
+                  <button
+                    onClick={handleSaveAllMarks}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-950/40 transition-all active:scale-95"
+                    title="Save all marks and attendance changes to database"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save Marks</span>
+                    {hasUnsavedChanges ? (
+                      <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping" title="Unsaved changes pending" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5 text-emerald-200" />
+                    )}
+                  </button>
 
-              {lastSavedTime && (
-                <span className="text-[11px] text-emerald-400 font-mono hidden lg:inline-flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  Saved {lastSavedTime}
-                </span>
+                  {lastSavedTime && (
+                    <span className="text-[11px] text-emerald-400 font-mono hidden lg:inline-flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Saved {lastSavedTime}
+                    </span>
+                  )}
+
+                  {/* Quick Fill Remaining AB Button */}
+                  <button
+                    onClick={handleMarkAllPendingAsAbsent}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors"
+                    title="Mark all pending (-) students as Absent (AB) in this assessment"
+                  >
+                    <UserCheck className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Mark Remaining as AB</span>
+                  </button>
+
+                  {/* Quick Fill Remaining as 0 Button */}
+                  <button
+                    onClick={handleMarkAllPendingAsZero}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors"
+                    title="Fill all pending (-) unanswered questions with 0 marks"
+                  >
+                    <Check className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Fill Remaining with 0M</span>
+                  </button>
+
+                  <button
+                    onClick={() => marksExcelRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium shadow-sm transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload Excel</span>
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-indigo-500/30 text-indigo-300 rounded-xl text-xs font-semibold shadow-inner">
+                  <Eye className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                  <span>Auditing Mode &bull; Read-Only Institutional Oversight</span>
+                </div>
               )}
-
-              {/* Quick Fill Remaining AB Button */}
-              <button
-                disabled={!canEditMarks}
-                onClick={handleMarkAllPendingAsAbsent}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors"
-                title="Mark all pending (-) students as Absent (AB) in this assessment"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-rose-400" />
-                <span>Mark Remaining as AB</span>
-              </button>
-
-              {/* Quick Fill Remaining as 0 Button */}
-              <button
-                disabled={!canEditMarks}
-                onClick={handleMarkAllPendingAsZero}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors"
-                title="Fill all pending (-) unanswered questions with 0 marks"
-              >
-                <Check className="w-3.5 h-3.5 text-slate-400" />
-                <span>Fill Remaining with 0M</span>
-              </button>
 
               <button
                 onClick={() => {
@@ -1097,15 +1199,6 @@ export const MarkEntryView: React.FC = () => {
               >
                 <Download className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Template</span>
-              </button>
-
-              <button
-                disabled={!canEditMarks}
-                onClick={() => marksExcelRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-lg text-xs font-medium shadow-sm transition-colors"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Upload Excel</span>
               </button>
 
               <button
@@ -1468,6 +1561,7 @@ export const MarkEntryView: React.FC = () => {
                             const status = entry?.statusCode || 'NOT_EVALUATED';
                             const isCellActive = focusedCell?.row === idx && focusedCell?.col === qIdx;
                             const isColActive = focusedCell?.col === qIdx;
+                            const coCode = courseOutcomes.find((co) => co.id === q.courseOutcomeId)?.code || 'CO';
 
                             if (status === 'PRESENT' && typeof val === 'number') {
                               studentTotalObtained += val;
@@ -1546,29 +1640,62 @@ export const MarkEntryView: React.FC = () => {
                                     } ${isCellActive ? 'ring-2 ring-indigo-400 border-indigo-400 shadow-lg scale-105 z-10' : ''} focus:outline-none`}
                                   />
                                 ) : (
-                                  <span
-                                    className={`inline-block px-2.5 py-1 rounded text-xs font-mono font-bold ${
-                                      status === 'ABSENT'
-                                        ? 'text-rose-400 bg-rose-950/60 border border-rose-900'
+                                  <div className="relative group/cell inline-block">
+                                    <span
+                                      className={`inline-block px-2.5 py-1 rounded text-xs font-mono font-bold cursor-help transition-all ${
+                                        status === 'ABSENT'
+                                          ? 'text-rose-400 bg-rose-950/60 border border-rose-900'
+                                          : status === 'MALPRACTICE'
+                                          ? 'text-red-300 bg-red-950/60 border border-red-900'
+                                          : status === 'EXEMPTED'
+                                          ? 'text-blue-400 bg-blue-950/60 border border-blue-900'
+                                          : typeof val === 'number'
+                                          ? 'text-slate-200 bg-slate-900/60 border border-slate-800'
+                                          : 'text-slate-500'
+                                      }`}
+                                    >
+                                      {status === 'ABSENT'
+                                        ? 'AB'
                                         : status === 'MALPRACTICE'
-                                        ? 'text-red-300 bg-red-950/60 border border-red-900'
+                                        ? 'MP'
                                         : status === 'EXEMPTED'
-                                        ? 'text-blue-400 bg-blue-950/60 border border-blue-900'
+                                        ? 'EX'
                                         : typeof val === 'number'
-                                        ? 'text-slate-200'
-                                        : 'text-slate-500'
-                                    }`}
-                                  >
-                                    {status === 'ABSENT'
-                                      ? 'AB'
-                                      : status === 'MALPRACTICE'
-                                      ? 'MP'
-                                      : status === 'EXEMPTED'
-                                      ? 'EX'
-                                      : typeof val === 'number'
-                                      ? val
-                                      : '-'}
-                                  </span>
+                                        ? val
+                                        : '-'}
+                                    </span>
+                                    {/* Read-Only Cell Hover Audit Tooltip */}
+                                    <div className="pointer-events-none opacity-0 group-hover/cell:opacity-100 transition-opacity duration-150 absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-40 w-56 p-2 bg-slate-950 border border-slate-700 rounded-xl shadow-xl text-[10px] text-slate-300 text-left font-sans">
+                                      <div className="font-bold text-white text-[11px] border-b border-slate-800 pb-1 mb-1 flex justify-between">
+                                        <span>{student.rollNumber} &bull; Q{q.questionNumber}</span>
+                                        <span className="text-indigo-400 font-mono">{coCode}</span>
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        <div className="flex justify-between">
+                                          <span className="text-slate-400">Score / Max:</span>
+                                          <span className="font-mono font-bold text-white">{typeof val === 'number' ? `${val} / ${q.maxMarks}M` : `${status} (Max: ${q.maxMarks}M)`}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-slate-400">Evaluator:</span>
+                                          <span className="text-slate-200 truncate max-w-[100px]">{currentWindow?.facultyName || activeSection?.facultyName || 'Course Faculty'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-slate-400">Allocated:</span>
+                                          <span className="text-emerald-400 font-mono">15 Jul 2026</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-slate-400">Submitted:</span>
+                                          <span className="text-slate-300 font-mono">{lastSavedTime || '14 Oct 2026, 16:42'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-slate-400">Audit Status:</span>
+                                          <span className={isWindowLocked ? 'text-amber-400 font-semibold' : 'text-emerald-400 font-semibold'}>
+                                            {isWindowLocked ? 'Verified / Locked' : 'Draft Entry'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
                                 )}
                               </td>
                             );
