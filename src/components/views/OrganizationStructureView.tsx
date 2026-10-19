@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
   AcademicFaculty,
@@ -93,11 +93,19 @@ export const OrganizationStructureView: React.FC = () => {
 
   React.useEffect(() => {
     if (['faculties', 'schools', 'departments', 'users', 'email-config', 'tree'].includes(activeSubTab)) {
-      setSubTab(activeSubTab as any);
+      if (activeSubTab === 'email-config' && !academicScope.isAdmin) {
+        setSubTab('faculties');
+      } else {
+        setSubTab(activeSubTab as any);
+      }
     }
-  }, [activeSubTab]);
+  }, [activeSubTab, academicScope.isAdmin]);
 
   const switchSubTab = (tab: 'faculties' | 'schools' | 'departments' | 'users' | 'email-config' | 'tree') => {
+    if (tab === 'email-config' && !academicScope.isAdmin) {
+      showMsg('Access Restricted: Only Institutional Administrators can access SMTP credentials and system outbox logs.', 'error');
+      return;
+    }
     setSubTab(tab);
     setActiveSubTab(tab);
   };
@@ -277,19 +285,30 @@ export const OrganizationStructureView: React.FC = () => {
     const assignedUser = users.find((u) => u.id === selectedHeadUserId);
 
     if (modalType === 'addFaculty') {
+      if (!academicScope.isAdmin) {
+        showMsg('Access Restricted: Only Institutional Administrators can register new faculties.', 'error');
+        return;
+      }
       addFaculty(code.trim().toUpperCase(), name.trim(), assignedUser?.id, assignedUser?.fullName);
       showMsg(`Faculty ${code.trim().toUpperCase()} registered with assigned Head.`);
     } else if (editingId) {
+      const existingFaculty = faculties.find((f) => f.id === editingId);
+      // Security: Only Institutional Administrator can appoint or replace the Head of Faculty.
+      // An HoF cannot replace themselves or designate a new HoF!
+      const canChangeHead = academicScope.isAdmin;
+      const headUserId = canChangeHead ? (assignedUser?.id || undefined) : existingFaculty?.headUserId;
+      const headUserName = canChangeHead ? (assignedUser?.fullName || undefined) : existingFaculty?.headUserName;
+
       updateFaculty(editingId, {
         code: code.trim().toUpperCase(),
         name: name.trim(),
-        headUserId: assignedUser?.id || undefined,
-        headUserName: assignedUser?.fullName || undefined,
+        headUserId,
+        headUserName,
       });
-      if (assignedUser) {
+      if (canChangeHead && assignedUser) {
         setFacultyHead(editingId, assignedUser.id, assignedUser.fullName);
       }
-      showMsg('Faculty details and Head of Faculty updated.');
+      showMsg('Faculty details updated.');
     }
     closeModal();
   };
@@ -300,20 +319,31 @@ export const OrganizationStructureView: React.FC = () => {
     const assignedUser = users.find((u) => u.id === selectedHeadUserId);
 
     if (modalType === 'addSchool') {
+      if (!academicScope.isAdmin && !academicScope.isHeadOfFaculty) {
+        showMsg('Access Restricted: Only Administrator or Head of Faculty can create schools.', 'error');
+        return;
+      }
       addSchool(parentFacultyId, code.trim().toUpperCase(), name.trim(), assignedUser?.id, assignedUser?.fullName);
       showMsg(`School ${code.trim().toUpperCase()} registered with assigned Head.`);
     } else if (editingId) {
+      const existingSchool = schools.find((s) => s.id === editingId);
+      // Security: Only Administrator or Head of Faculty can appoint or replace the Head of School.
+      // A Head of School cannot replace themselves or assign someone else as HoS!
+      const canChangeHead = academicScope.isAdmin || academicScope.isHeadOfFaculty;
+      const headUserId = canChangeHead ? (assignedUser?.id || undefined) : existingSchool?.headUserId;
+      const headUserName = canChangeHead ? (assignedUser?.fullName || undefined) : existingSchool?.headUserName;
+
       updateSchool(editingId, {
         code: code.trim().toUpperCase(),
         name: name.trim(),
         facultyId: parentFacultyId,
-        headUserId: assignedUser?.id || undefined,
-        headUserName: assignedUser?.fullName || undefined,
+        headUserId,
+        headUserName,
       });
-      if (assignedUser) {
+      if (canChangeHead && assignedUser) {
         setSchoolHead(editingId, assignedUser.id, assignedUser.fullName);
       }
-      showMsg('School details and Head of School updated.');
+      showMsg('School details updated.');
     }
     closeModal();
   };
@@ -324,25 +354,36 @@ export const OrganizationStructureView: React.FC = () => {
     const assignedUser = users.find((u) => u.id === selectedHeadUserId);
 
     if (modalType === 'addDept') {
+      if (!academicScope.isAdmin && !academicScope.isHeadOfFaculty && !academicScope.isHeadOfSchool) {
+        showMsg('Access Restricted: Only Administrator, Head of Faculty, or Head of School can create departments.', 'error');
+        return;
+      }
       addDepartment(parentSchoolId, code.trim().toUpperCase(), name.trim(), assignedUser?.id, assignedUser?.fullName);
       showMsg(`Department ${code.trim().toUpperCase()} registered with assigned HOD.`);
     } else if (editingId) {
+      const existingDept = departments.find((d) => d.id === editingId);
+      // Security: Only Administrator, Head of Faculty, or Head of School can appoint or replace the HOD.
+      // A Head of Department cannot replace themselves or assign someone else as HOD!
+      const canChangeHead = academicScope.isAdmin || academicScope.isHeadOfFaculty || academicScope.isHeadOfSchool;
+      const headUserId = canChangeHead ? (assignedUser?.id || undefined) : existingDept?.headUserId;
+      const headUserName = canChangeHead ? (assignedUser?.fullName || undefined) : existingDept?.headUserName;
+
       updateDepartment(editingId, {
         code: code.trim().toUpperCase(),
         name: name.trim(),
         schoolId: parentSchoolId,
-        headUserId: assignedUser?.id || undefined,
-        headUserName: assignedUser?.fullName || undefined,
+        headUserId,
+        headUserName,
       });
-      if (assignedUser) {
+      if (canChangeHead && assignedUser) {
         setDepartmentHead(editingId, assignedUser.id, assignedUser.fullName);
       }
-      showMsg('Department details and HOD updated.');
+      showMsg('Department details updated.');
     }
     closeModal();
   };
 
-  // User Save Handler
+  // User Save Handler with role hierarchy validation
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userFullName.trim() || !userEmail.trim()) return;
@@ -381,9 +422,51 @@ export const OrganizationStructureView: React.FC = () => {
         );
       }
     } else if (editingId) {
+      const targetUser = users.find((u) => u.id === editingId);
+      if (!targetUser) return;
+
+      let finalRole = targetUser.role;
+      // Guard 1: User cannot edit their own institutional role
+      if (editingId === currentUser?.id) {
+        if (userRole !== targetUser.role) {
+          showMsg('Governance Policy: You cannot modify your own institutional role.', 'error');
+          return;
+        }
+        finalRole = targetUser.role;
+      } else if (!academicScope.isAdmin) {
+        // Guard 2: Non-admins cannot edit an account at or above their level
+        const roleRank: Record<UserRole, number> = {
+          SUPER_ADMIN: 100,
+          TENANT_ADMIN: 90,
+          HEAD_OF_FACULTY: 80,
+          DEAN: 75,
+          HEAD_OF_SCHOOL: 70,
+          HOD: 60,
+          COURSE_COORDINATOR: 50,
+          COURSE_FACULTY: 40,
+          STUDENT: 10,
+        };
+        const myRank = roleRank[currentUser?.role || 'COURSE_FACULTY'] || 0;
+        const targetRank = roleRank[targetUser.role] || 0;
+
+        if (targetRank >= myRank) {
+          showMsg('Access Restricted: You cannot modify an account at or above your leadership tier.', 'error');
+          return;
+        }
+
+        // Guard 3: Role must be in assignable roles
+        if (!academicScope.assignableRoles.includes(userRole)) {
+          showMsg(`Access Restricted: You cannot assign the role "${userRole}".`, 'error');
+          return;
+        }
+        finalRole = userRole;
+      } else {
+        finalRole = userRole;
+      }
+
       updateUser(editingId, {
         fullName: sanitizeInput(userFullName).trim(),
-        role: userRole,
+        role: finalRole,
         department: sanitizeInput(userDepartment).trim(),
       });
       showMsg(`Account details and role updated for ${userFullName}.`);
@@ -419,15 +502,52 @@ export const OrganizationStructureView: React.FC = () => {
     }
   };
 
-  // Filtered Users List
-  const filteredUsers = users.filter((u) => {
-    const matchesQuery =
-      u.fullName.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-      (u.department || '').toLowerCase().includes(userSearchQuery.toLowerCase());
-    const matchesRole = selectedRoleFilter === 'ALL' || u.role === selectedRoleFilter;
-    return matchesQuery && matchesRole;
-  });
+  // Filtered Users List with strict jurisdictional scoping
+  const filteredUsers = useMemo(() => {
+    let list = users;
+
+    // Jurisdictional hierarchy filtering
+    if (!academicScope.isAdmin) {
+      if (academicScope.isHeadOfFaculty && academicScope.ledFaculty) {
+        // HoF: Sees accounts under their faculty's departments, plus themselves. Cannot see Tenant/Super Admin.
+        const facultySchoolIds = new Set(schools.filter((s) => s.facultyId === academicScope.ledFaculty?.id).map((s) => s.id));
+        const facultyDeptNames = new Set(departments.filter((d) => facultySchoolIds.has(d.schoolId)).map((d) => d.name));
+        list = list.filter((u) => {
+          if (u.role === 'SUPER_ADMIN' || u.role === 'TENANT_ADMIN') return false;
+          if (u.id === currentUser?.id) return true;
+          return u.department && facultyDeptNames.has(u.department);
+        });
+      } else if (academicScope.isHeadOfSchool && academicScope.ledSchool) {
+        // HoS: Sees accounts under their school's departments, plus themselves.
+        const schoolDeptNames = new Set(departments.filter((d) => d.schoolId === academicScope.ledSchool?.id).map((d) => d.name));
+        list = list.filter((u) => {
+          if (u.role === 'SUPER_ADMIN' || u.role === 'TENANT_ADMIN' || u.role === 'HEAD_OF_FACULTY') return false;
+          if (u.id === currentUser?.id) return true;
+          return u.department && schoolDeptNames.has(u.department);
+        });
+      } else if (academicScope.isHod && academicScope.ledDepartment) {
+        // HoD: Sees accounts under their department only, plus themselves.
+        const myDeptName = academicScope.ledDepartment.name;
+        list = list.filter((u) => {
+          if (u.role === 'SUPER_ADMIN' || u.role === 'TENANT_ADMIN' || u.role === 'HEAD_OF_FACULTY' || u.role === 'HEAD_OF_SCHOOL') return false;
+          if (u.id === currentUser?.id) return true;
+          return u.department === myDeptName;
+        });
+      } else {
+        // Regular faculty / coordinator: can only see themselves or departmental colleagues
+        list = list.filter((u) => u.id === currentUser?.id || (currentUser?.department && u.department === currentUser.department));
+      }
+    }
+
+    return list.filter((u) => {
+      const matchesQuery =
+        u.fullName.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+        u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+        (u.department || '').toLowerCase().includes(userSearchQuery.toLowerCase());
+      const matchesRole = selectedRoleFilter === 'ALL' || u.role === selectedRoleFilter;
+      return matchesQuery && matchesRole;
+    });
+  }, [users, academicScope, schools, departments, currentUser, userSearchQuery, selectedRoleFilter]);
 
   // Role badge helper
   const renderRoleBadge = (role: UserRole) => {
@@ -501,7 +621,7 @@ export const OrganizationStructureView: React.FC = () => {
           </div>
 
           {/* Sub-Tab Navigation */}
-          <div className="flex items-center flex-wrap gap-1 bg-slate-950 border border-slate-800 p-1.5 rounded-2xl text-xs font-medium">
+          <div className="flex items-center flex-wrap gap-1.5 bg-slate-950 border border-slate-800 p-1.5 rounded-2xl text-xs font-medium">
             <button
               onClick={() => switchSubTab('faculties')}
               className={`px-3 py-1.5 rounded-xl transition-all ${
@@ -510,7 +630,7 @@ export const OrganizationStructureView: React.FC = () => {
                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              1. Faculties ({faculties.length})
+              Faculties ({faculties.length})
             </button>
             <button
               onClick={() => switchSubTab('schools')}
@@ -520,7 +640,7 @@ export const OrganizationStructureView: React.FC = () => {
                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              2. Schools ({schools.length})
+              Schools ({schools.length})
             </button>
             <button
               onClick={() => switchSubTab('departments')}
@@ -530,7 +650,7 @@ export const OrganizationStructureView: React.FC = () => {
                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              3. Departments ({departments.length})
+              Departments ({departments.length})
             </button>
             <button
               onClick={() => switchSubTab('users')}
@@ -540,18 +660,20 @@ export const OrganizationStructureView: React.FC = () => {
                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              4. User Accounts ({users.length})
+              User Accounts ({filteredUsers.length})
             </button>
-            <button
-              onClick={() => switchSubTab('email-config')}
-              className={`px-3 py-1.5 rounded-xl transition-all ${
-                subTab === 'email-config'
-                  ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
-              }`}
-            >
-              5. Email Gateway & Outbox ({outgoingEmails.length})
-            </button>
+            {academicScope.isAdmin && (
+              <button
+                onClick={() => switchSubTab('email-config')}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  subTab === 'email-config'
+                    ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                Email Gateway &amp; Outbox ({outgoingEmails.length})
+              </button>
+            )}
             <button
               onClick={() => switchSubTab('tree')}
               className={`px-3 py-1.5 rounded-xl transition-all ${
@@ -560,7 +682,7 @@ export const OrganizationStructureView: React.FC = () => {
                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
-              6. Hierarchy Tree
+              Hierarchy Tree
             </button>
           </div>
         </div>
@@ -1220,7 +1342,7 @@ export const OrganizationStructureView: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((u) => (
+                    filteredUsers.map((u: UserAccount) => (
                       <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
                         <td className="px-4 py-3">
                           <div className="font-bold text-white text-xs">{u.fullName}</div>
@@ -1270,46 +1392,74 @@ export const OrganizationStructureView: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            {/* Admin Reset Password Button */}
-                            <button
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    `Authorize Administrator Password Reset for ${u.fullName} (${u.email})?\n\nThis will unlock their account and dispatch a fresh OTP & password setup link.`
-                                  )
-                                ) {
-                                  const res = adminResetUserPassword(u.id);
-                                  showMsg(res.message);
-                                }
-                              }}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors"
-                              title="Authorize Administrator Password Reset (Dispatches OTP)"
-                            >
-                              <Key className="w-3.5 h-3.5" />
-                            </button>
+                            {(() => {
+                              const roleRank: Record<UserRole, number> = {
+                                SUPER_ADMIN: 100,
+                                TENANT_ADMIN: 90,
+                                HEAD_OF_FACULTY: 80,
+                                DEAN: 75,
+                                HEAD_OF_SCHOOL: 70,
+                                HOD: 60,
+                                COURSE_COORDINATOR: 50,
+                                COURSE_FACULTY: 40,
+                                STUDENT: 10,
+                              };
+                              const myRank = (currentUser?.role ? roleRank[currentUser.role as UserRole] : 0) || 0;
+                              const targetRank = (u.role ? roleRank[u.role as UserRole] : 0) || 0;
+                              const isSelf = u.id === currentUser?.id;
+                              const canAdminTarget = academicScope.isAdmin || (!isSelf && myRank > targetRank);
 
-                            {/* Edit Role / Profile Button */}
-                            <button
-                              onClick={() => openEditUser(u)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                              title="Edit User Role / Details"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
+                              return (
+                                <>
+                                  {/* Admin Reset Password Button: Admin only */}
+                                  {academicScope.isAdmin && (
+                                    <button
+                                      onClick={() => {
+                                        if (
+                                          confirm(
+                                            `Authorize Administrator Password Reset for ${u.fullName} (${u.email})?\n\nThis will unlock their account and dispatch a fresh OTP & password setup link.`
+                                          )
+                                        ) {
+                                          const res = adminResetUserPassword(u.id);
+                                          showMsg(res.message);
+                                        }
+                                      }}
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors"
+                                      title="Authorize Administrator Password Reset (Dispatches OTP)"
+                                    >
+                                      <Key className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
 
-                            {/* Delete User Button */}
-                            <button
-                              onClick={() => {
-                                if (confirm(`Permanently delete account "${u.fullName}" (${u.email})?`)) {
-                                  deleteUser(u.id);
-                                  showMsg(`Deleted user ${u.fullName}.`);
-                                }
-                              }}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                              title="Delete Account"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                                  {/* Edit Role / Profile Button */}
+                                  {(isSelf || canAdminTarget) && (
+                                    <button
+                                      onClick={() => openEditUser(u)}
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                      title={isSelf ? 'Edit Your Profile Details' : 'Edit User Role / Details'}
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+
+                                  {/* Delete User Button: cannot delete self, cannot delete superior or peer */}
+                                  {!isSelf && canAdminTarget && (
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`Permanently delete account "${u.fullName}" (${u.email})?`)) {
+                                          deleteUser(u.id);
+                                          showMsg(`Deleted user ${u.fullName}.`);
+                                        }
+                                      }}
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                                      title="Delete Account"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
@@ -1704,33 +1854,46 @@ export const OrganizationStructureView: React.FC = () => {
                   <label className="font-semibold text-slate-300 block">
                     Assigned Head of Faculty Account
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => openAddUser('HEAD_OF_FACULTY')}
-                    className="text-[11px] text-teal-400 hover:text-teal-300 flex items-center gap-1 font-medium transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Register New Account</span>
-                  </button>
-                </div>
-                <select
-                  value={selectedHeadUserId}
-                  onChange={(e) => setSelectedHeadUserId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
-                >
-                  <option value="">-- Select Registered Account as Head of Faculty (HoF Required) --</option>
-                  {eligibleHoFUsers.length === 0 ? (
-                    <option disabled value="">No eligible HoF accounts found</option>
-                  ) : (
-                    eligibleHoFUsers.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.email}) &bull; {u.role === 'HEAD_OF_FACULTY' ? 'HoF' : 'Admin'}
-                      </option>
-                    ))
+                  {academicScope.isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => openAddUser('HEAD_OF_FACULTY')}
+                      className="text-[11px] text-teal-400 hover:text-teal-300 flex items-center gap-1 font-medium transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Register New Account</span>
+                    </button>
                   )}
-                </select>
-                <span className="text-[10px] text-teal-400 mt-1 block">
-                  Role Policy: Only accounts with role 'Head of Faculty (HoF)' can head a Faculty. Accounts with just 'Faculty' role cannot be selected.
+                </div>
+                {academicScope.isAdmin ? (
+                  <select
+                    value={selectedHeadUserId}
+                    onChange={(e) => setSelectedHeadUserId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="">-- Select Registered Account as Head of Faculty (HoF Required) --</option>
+                    {eligibleHoFUsers.length === 0 ? (
+                      <option disabled value="">No eligible HoF accounts found</option>
+                    ) : (
+                      eligibleHoFUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName} ({u.email}) &bull; {u.role === 'HEAD_OF_FACULTY' ? 'HoF' : 'Admin'}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                ) : (
+                  <div className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 flex items-center justify-between text-xs">
+                    <span>{users.find((u) => u.id === selectedHeadUserId)?.fullName || 'Assigned Head of Faculty'}</span>
+                    <span className="text-[10px] bg-indigo-950 text-indigo-400 border border-indigo-800/80 px-2 py-0.5 rounded font-mono">
+                      Locked (Admin Governance)
+                    </span>
+                  </div>
+                )}
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  {academicScope.isAdmin
+                    ? "Role Policy: Only accounts with role 'Head of Faculty (HoF)' can head a Faculty."
+                    : "Institutional Governance: The Head of Faculty cannot replace himself or assign someone else as HoF. Reassignment requires Institutional Administrator authority."}
                 </span>
               </div>
 
@@ -1820,33 +1983,46 @@ export const OrganizationStructureView: React.FC = () => {
                   <label className="font-semibold text-slate-300 block">
                     Assigned Head of School Account
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => openAddUser('HEAD_OF_SCHOOL')}
-                    className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Register New Account</span>
-                  </button>
-                </div>
-                <select
-                  value={selectedHeadUserId}
-                  onChange={(e) => setSelectedHeadUserId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
-                >
-                  <option value="">-- Select Registered Account as Head of School (HoS Required) --</option>
-                  {eligibleHoSUsers.length === 0 ? (
-                    <option disabled value="">No eligible HoS accounts found</option>
-                  ) : (
-                    eligibleHoSUsers.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.email}) &bull; {u.role === 'HEAD_OF_SCHOOL' ? 'HoS' : 'Admin'}
-                      </option>
-                    ))
+                  {(academicScope.isAdmin || academicScope.isHeadOfFaculty) && (
+                    <button
+                      type="button"
+                      onClick={() => openAddUser('HEAD_OF_SCHOOL')}
+                      className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Register New Account</span>
+                    </button>
                   )}
-                </select>
-                <span className="text-[10px] text-indigo-400 mt-1 block">
-                  Role Policy: Only accounts with role 'Head of School (HoS)' can head a School. Accounts with just 'Faculty' role cannot be selected.
+                </div>
+                {(academicScope.isAdmin || academicScope.isHeadOfFaculty) ? (
+                  <select
+                    value={selectedHeadUserId}
+                    onChange={(e) => setSelectedHeadUserId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="">-- Select Registered Account as Head of School (HoS Required) --</option>
+                    {eligibleHoSUsers.length === 0 ? (
+                      <option disabled value="">No eligible HoS accounts found</option>
+                    ) : (
+                      eligibleHoSUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName} ({u.email}) &bull; {u.role === 'HEAD_OF_SCHOOL' ? 'HoS' : 'Admin'}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                ) : (
+                  <div className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 flex items-center justify-between text-xs">
+                    <span>{users.find((u) => u.id === selectedHeadUserId)?.fullName || 'Assigned Head of School'}</span>
+                    <span className="text-[10px] bg-indigo-950 text-indigo-400 border border-indigo-800/80 px-2 py-0.5 rounded font-mono">
+                      Locked (HoS cannot self-replace)
+                    </span>
+                  </div>
+                )}
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  {(academicScope.isAdmin || academicScope.isHeadOfFaculty)
+                    ? "Role Policy: Only accounts with role 'Head of School (HoS)' can head a School."
+                    : "Institutional Governance: The Head of School cannot replace himself or assign someone else as HoS. Reassignment requires Institutional Administrator or Head of Faculty authority."}
                 </span>
               </div>
 
@@ -1940,33 +2116,46 @@ export const OrganizationStructureView: React.FC = () => {
                   <label className="font-semibold text-slate-300 block">
                     Assigned Head of Department (HOD)
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => openAddUser('HOD')}
-                    className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-medium transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Register New Account</span>
-                  </button>
-                </div>
-                <select
-                  value={selectedHeadUserId}
-                  onChange={(e) => setSelectedHeadUserId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
-                >
-                  <option value="">-- Select Registered Account as HOD (HoD Required) --</option>
-                  {eligibleHodUsers.length === 0 ? (
-                    <option disabled value="">No eligible HoD accounts found</option>
-                  ) : (
-                    eligibleHodUsers.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.email}) &bull; {u.role === 'HOD' ? 'HoD' : 'Admin'}
-                      </option>
-                    ))
+                  {(academicScope.isAdmin || academicScope.isHeadOfFaculty || academicScope.isHeadOfSchool) && (
+                    <button
+                      type="button"
+                      onClick={() => openAddUser('HOD')}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-medium transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Register New Account</span>
+                    </button>
                   )}
-                </select>
-                <span className="text-[10px] text-amber-400 mt-1 block">
-                  Role Policy: Only accounts with role 'Head of Department (HoD)' can head a Department. Accounts with just 'Faculty' role cannot be selected.
+                </div>
+                {(academicScope.isAdmin || academicScope.isHeadOfFaculty || academicScope.isHeadOfSchool) ? (
+                  <select
+                    value={selectedHeadUserId}
+                    onChange={(e) => setSelectedHeadUserId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="">-- Select Registered Account as HOD (HoD Required) --</option>
+                    {eligibleHodUsers.length === 0 ? (
+                      <option disabled value="">No eligible HoD accounts found</option>
+                    ) : (
+                      eligibleHodUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName} ({u.email}) &bull; {u.role === 'HOD' ? 'HoD' : 'Admin'}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                ) : (
+                  <div className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 flex items-center justify-between text-xs">
+                    <span>{users.find((u) => u.id === selectedHeadUserId)?.fullName || 'Assigned Head of Department'}</span>
+                    <span className="text-[10px] bg-slate-900 text-amber-400 border border-amber-800/80 px-2 py-0.5 rounded font-mono">
+                      Locked (HoD cannot self-replace)
+                    </span>
+                  </div>
+                )}
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  {(academicScope.isAdmin || academicScope.isHeadOfFaculty || academicScope.isHeadOfSchool)
+                    ? "Role Policy: Only accounts with role 'Head of Department (HoD)' can head a Department."
+                    : "Institutional Governance: The Head of Department cannot replace himself or assign someone else as HoD. Reassignment requires Administrator, Head of Faculty, or Head of School authority."}
                 </span>
               </div>
 
@@ -2032,34 +2221,43 @@ export const OrganizationStructureView: React.FC = () => {
 
               <div>
                 <label className="font-semibold text-slate-300 block mb-1">Institutional Role *</label>
-                <select
-                  value={userRole}
-                  onChange={(e) => setUserRole(e.target.value as UserRole)}
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
-                >
-                  {(academicScope.assignableRoles.length > 0
-                    ? academicScope.assignableRoles
-                    : (['COURSE_FACULTY', 'STUDENT'] as UserRole[])
-                  ).map((r) => {
-                    const roleLabels: Record<UserRole, string> = {
-                      SUPER_ADMIN: 'Super Administrator',
-                      TENANT_ADMIN: 'Institutional Admin (Master Governance)',
-                      HEAD_OF_FACULTY: 'Head of Faculty (HoF) - Eligible to Head Faculty',
-                      HEAD_OF_SCHOOL: 'Head of School (HoS) - Eligible to Head School',
-                      HOD: 'Head of Department (HoD) - Eligible to Head Department',
-                      DEAN: 'Dean of Faculty / School',
-                      COURSE_COORDINATOR: 'Course Coordinator - Blueprints & CO Mapping',
-                      COURSE_FACULTY: 'Faculty - Teaching & Marks Entry',
-                      STUDENT: 'Student - Learner Profile',
-                    };
-                    return (
-                      <option key={r} value={r}>
-                        {roleLabels[r] || r}
-                      </option>
-                    );
-                  })}
-                </select>
+                {modalType === 'editUser' && editingId === currentUser?.id ? (
+                  <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 flex items-center justify-between text-xs">
+                    <span className="font-semibold">{currentUser.role.replace(/_/g, ' ')}</span>
+                    <span className="text-[10px] bg-rose-950 text-rose-300 border border-rose-800 px-2 py-0.5 rounded font-mono">
+                      Self-Role Modification Locked
+                    </span>
+                  </div>
+                ) : (
+                  <select
+                    value={userRole}
+                    onChange={(e) => setUserRole(e.target.value as UserRole)}
+                    required
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
+                  >
+                    {(academicScope.assignableRoles.length > 0
+                      ? academicScope.assignableRoles
+                      : (['COURSE_FACULTY', 'STUDENT'] as UserRole[])
+                    ).map((r) => {
+                      const roleLabels: Record<UserRole, string> = {
+                        SUPER_ADMIN: 'Super Administrator',
+                        TENANT_ADMIN: 'Institutional Admin (Master Governance)',
+                        HEAD_OF_FACULTY: 'Head of Faculty (HoF) - Eligible to Head Faculty',
+                        HEAD_OF_SCHOOL: 'Head of School (HoS) - Eligible to Head School',
+                        HOD: 'Head of Department (HoD) - Eligible to Head Department',
+                        DEAN: 'Dean of Faculty / School',
+                        COURSE_COORDINATOR: 'Course Coordinator - Blueprints & CO Mapping',
+                        COURSE_FACULTY: 'Faculty - Teaching & Marks Entry',
+                        STUDENT: 'Student - Learner Profile',
+                      };
+                      return (
+                        <option key={r} value={r}>
+                          {roleLabels[r] || r}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
                 <div className="mt-2 p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
                   <div className="font-semibold text-slate-300 flex items-center gap-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />

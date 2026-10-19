@@ -137,7 +137,7 @@ export const TermsView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-400 bg-amber-950/80 px-3 py-1 rounded-full border border-amber-800/80">
-                Menu Item 4
+                Academic Terms
               </span>
               <span className="text-xs text-slate-400">Academic Sessions & Calendars &bull; Batch 2026</span>
             </div>

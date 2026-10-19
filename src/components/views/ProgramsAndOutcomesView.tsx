@@ -253,9 +253,9 @@ export const ProgramsAndOutcomesView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-purple-400 bg-purple-950/80 px-3 py-1 rounded-full border border-purple-800/80">
-                Menu Item 3
+                Academic Programs
               </span>
-              <span className="text-xs text-slate-400">Curriculum & Outcome-Based Architecture &bull; Batch 2026</span>
+              <span className="text-xs text-slate-400">Curriculum &amp; Outcome-Based Architecture &bull; Batch 2026</span>
             </div>
             <h1 className="text-2xl font-black text-white mt-2">
               Programs & Outcomes (POs / PSOs)

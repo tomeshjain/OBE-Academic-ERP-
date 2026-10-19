@@ -57,7 +57,6 @@ function DashboardShell() {
   const [resetConfirmWord, setResetConfirmWord] = useState('');
   const [captchaCode, setCaptchaCode] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
-  const [showSecurityAudit, setShowSecurityAudit] = useState(false);
 
   const generateCaptcha = () => {
     const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -131,19 +130,9 @@ function DashboardShell() {
       {/* 2. Main Content Dashboard Container */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         {/* Top Header Bar: Optimized space with Active Program and Course Display */}
-        <header className="sticky top-0 z-20 bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-6 py-2.5 flex items-center justify-between gap-4">
-          {/* Left: Active Module Identifier without numbering */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <span className="p-1 rounded-lg bg-indigo-950/60 border border-indigo-800/80 text-indigo-400">
-              <currentMenuConfig.icon className="w-4 h-4" />
-            </span>
-            <span className="text-sm font-bold text-white tracking-tight truncate max-w-[180px] lg:max-w-none">
-              {currentMenuConfig.label}
-            </span>
-          </div>
-
-          {/* Center: Global Active Program and Course (Clear Visibility & Quick Switching) */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-1 justify-center max-w-2xl">
+        <header className="sticky top-0 z-20 bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
+          {/* Left: Global Active Program and Course (Clear Visibility & Quick Switching) */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 max-w-2xl">
             {/* Active Program Selector */}
             <div className="flex items-center gap-2 bg-slate-900/90 border border-indigo-900/50 rounded-xl px-2.5 py-1 text-xs text-slate-300 shadow-sm hover:border-indigo-700/70 transition-colors">
               <GraduationCap className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
@@ -154,7 +143,7 @@ function DashboardShell() {
                 <select
                   value={activeProgramId || ''}
                   onChange={(e) => setActiveProgramId(e.target.value)}
-                  className="bg-transparent text-white font-bold text-xs focus:outline-none cursor-pointer max-w-[150px] md:max-w-[190px] truncate"
+                  className="bg-transparent text-white font-bold text-xs focus:outline-none cursor-pointer max-w-[150px] md:max-w-[200px] truncate"
                   title="Global Active Academic Program"
                 >
                   {visiblePrograms.map((p) => (
@@ -176,7 +165,7 @@ function DashboardShell() {
                 <select
                   value={activeCourseId || ''}
                   onChange={(e) => setActiveCourseId(e.target.value)}
-                  className="bg-transparent text-teal-200 font-bold text-xs focus:outline-none cursor-pointer max-w-[160px] md:max-w-[220px] truncate"
+                  className="bg-transparent text-teal-200 font-bold text-xs focus:outline-none cursor-pointer max-w-[170px] md:max-w-[240px] truncate"
                   title="Global Active Course"
                 >
                   {visibleCourses.map((c) => (
@@ -189,28 +178,10 @@ function DashboardShell() {
             </div>
           </div>
 
-          {/* Right: AY Batch / Security / Theme / Profile */}
+          {/* Right: Theme Selector & User Profile */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Compact Academic Year & Batch */}
-            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300">
-              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-              <span>AY 26-27</span>
-              <span className="text-slate-600">&bull;</span>
-              <span className="text-indigo-300 font-semibold">B26</span>
-            </div>
-
-            {/* Security Shield Indicator */}
-            <button
-              onClick={() => setShowSecurityAudit(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-emerald-950/50 border border-emerald-800/60 text-emerald-300 font-medium hover:bg-emerald-900/50 transition-colors"
-              title="Click to view Security & SQLi Defense Audit"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden 2xl:inline">Shield Active</span>
-            </button>
-
             {/* Theme Selector Dropdown in Right Top Menu */}
-            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2 py-1 text-xs text-slate-300 shadow-sm">
+            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1 text-xs text-slate-300 shadow-sm">
               <Palette className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               <select
                 value={theme}
@@ -218,14 +189,11 @@ function DashboardShell() {
                 className="bg-transparent text-slate-200 text-xs font-semibold focus:outline-none cursor-pointer pr-1"
                 title="Select Platform Theme"
               >
-                <option value="zen-minimalist" className="bg-slate-950 text-slate-200">
-                  Zen (Light)
+                <option value="obsidian-black" className="bg-slate-950 text-slate-200">
+                  Obsidian (Dark)
                 </option>
                 <option value="clean-light" className="bg-slate-950 text-slate-200">
                   Clean Light
-                </option>
-                <option value="obsidian-black" className="bg-slate-950 text-slate-200">
-                  Obsidian (Dark)
                 </option>
               </select>
             </div>
@@ -237,7 +205,7 @@ function DashboardShell() {
                   <User className="w-3.5 h-3.5" />
                 </div>
                 <div className="hidden sm:block text-left">
-                  <div className="text-xs font-bold text-white leading-tight truncate max-w-[85px]">
+                  <div className="text-xs font-bold text-white leading-tight truncate max-w-[95px]">
                     {currentUser.fullName}
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono">
@@ -271,8 +239,8 @@ function DashboardShell() {
           </div>
         </header>
 
-        {/* View Component Rendering - One and only one canonical way to reach each page */}
-        <main className="flex-1 p-8 max-w-7xl w-full mx-auto">
+        {/* View Component Rendering - Full screen content area with responsive padding */}
+        <main className="flex-1 p-4 sm:p-6 w-full">
           {activeMenuItem === 'org-structure' && <OrganizationStructureView />}
           {activeMenuItem === 'regulations' && <RegulationsView />}
           {activeMenuItem === 'programs-outcomes' && <ProgramsAndOutcomesView />}
@@ -285,7 +253,7 @@ function DashboardShell() {
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-slate-900 bg-slate-950/40 px-8 py-5 text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-3 mt-auto">
+        <footer className="border-t border-slate-900 bg-slate-950/40 px-6 sm:px-8 py-4 text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-3 mt-auto">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span>
@@ -304,81 +272,6 @@ function DashboardShell() {
         </footer>
       </div>
 
-      {/* SECURITY DEFENSE AUDIT MODAL */}
-      {showSecurityAudit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-950 border border-emerald-800 flex items-center justify-center text-emerald-400">
-                  <ShieldCheck className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Platform Security & Defense Audit</h3>
-                  <p className="text-xs text-slate-400">Zero-Trust Academic Governance Verification</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowSecurityAudit(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
-              >
-                &times;
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
-                <div className="font-bold text-white flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>SQL Injection (SQLi) Defense Engine</span>
-                </div>
-                <p className="text-slate-400 text-[11px] leading-relaxed">
-                  Active regex filter intercepts comments (<code>--</code>, <code>/*</code>), stacked queries (<code>; DROP</code>), boolean tautologies (<code>' OR '1'='1</code>), and union extractions before state commits.
-                </p>
-              </div>
-
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
-                <div className="font-bold text-white flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Cross-Site Scripting (XSS) Disinfection</span>
-                </div>
-                <p className="text-slate-400 text-[11px] leading-relaxed">
-                  All user formulas and question bodies are disinfected via strict HTML entity encoding and KaTeX token whitelist.
-                </p>
-              </div>
-
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
-                <div className="font-bold text-white flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Role-Based Access Control (RBAC) & Tenant RLS</span>
-                </div>
-                <p className="text-slate-400 text-[11px] leading-relaxed">
-                  Strict partition by tenant ID with role authorization for Admin, Coordinator, Faculty, HOD, and Student accounts.
-                </p>
-              </div>
-
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
-                <div className="font-bold text-white flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Brute-Force & Rate Limiting Guard</span>
-                </div>
-                <p className="text-slate-400 text-[11px] leading-relaxed">
-                  Throttles consecutive failed login attempts and emergency unlock operations with exponential backoff.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-3 border-t border-slate-800">
-              <button
-                onClick={() => setShowSecurityAudit(false)}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold"
-              >
-                Close Audit View
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* RESET ALL DATA CONFIRMATION MODAL WITH 'RESET' AND CAPTCHA VALIDATION */}
       {showResetConfirm && (

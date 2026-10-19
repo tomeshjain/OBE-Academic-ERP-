@@ -1355,7 +1355,7 @@ export const CoursesView: React.FC = () => {
               <Network className="w-12 h-12 text-slate-600 mx-auto mb-3" />
               <h3 className="text-base font-semibold text-white">Matrix Requires COs and POs</h3>
               <p className="text-slate-400 text-xs mt-1 max-w-md mx-auto">
-                Ensure you have defined Course Outcomes (under the COs tab) and Program Outcomes (under Menu Item 3).
+                Ensure you have defined Course Outcomes (under the COs tab) and Program Outcomes (under Programs &amp; Outcomes).
               </p>
             </div>
           ) : (
@@ -1468,7 +1468,7 @@ export const CoursesView: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none"
                 >
                   {programs.length === 0 ? (
-                    <option value="">No Programs Found (Create in Menu Item 3)</option>
+                    <option value="">No Programs Found (Create in Programs &amp; Outcomes)</option>
                   ) : (
                     programs.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -1818,7 +1818,7 @@ export const CoursesView: React.FC = () => {
 
               {students.length === 0 ? (
                 <div className="text-center text-slate-500 py-6">
-                  No enrolled students in system. Add students in Menu Item 8.
+                  No enrolled students in system. Add students in Mark Entry Matrix.
                 </div>
               ) : (
                 <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">

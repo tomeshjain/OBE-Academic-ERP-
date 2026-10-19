@@ -644,7 +644,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
-        const savedTheme = (localStorage.getItem('academic_erp_theme') as AppTheme) || 'obsidian-black';
+        const rawTheme = localStorage.getItem('academic_erp_theme');
+        const savedTheme: AppTheme = rawTheme === 'clean-light' ? 'clean-light' : 'obsidian-black';
         setThemeState(savedTheme);
         document.documentElement.setAttribute('data-theme', savedTheme);
 

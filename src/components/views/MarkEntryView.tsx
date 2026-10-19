@@ -1294,7 +1294,7 @@ export const MarkEntryView: React.FC = () => {
               <Table className="w-12 h-12 text-slate-600 mx-auto mb-3" />
               <h3 className="text-base font-semibold text-white">No Questions in Assessment Blueprint</h3>
               <p className="text-slate-400 text-xs mt-1 max-w-md mx-auto">
-                No questions have been configured for this assessment window. Configure questions under Menu Item 7 (Assessment & Question Papers).
+                No questions have been configured for this assessment window. Configure questions under Assessment &amp; Question Papers.
               </p>
             </div>
           ) : (

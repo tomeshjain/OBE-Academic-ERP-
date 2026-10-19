@@ -43,7 +43,7 @@ export type ComponentType = 'CIE' | 'SEE';
 
 export type OutcomeType = 'PO' | 'PSO';
 
-export type AppTheme = 'zen-minimalist' | 'obsidian-black' | 'clean-light';
+export type AppTheme = 'obsidian-black' | 'clean-light';
 
 export type MenuItemId =
   | 'org-structure'

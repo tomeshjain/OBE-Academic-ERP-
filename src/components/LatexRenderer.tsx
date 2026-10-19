@@ -24,10 +24,22 @@ export const LatexRenderer: React.FC<LatexRendererProps> = ({
   const renderedParts = useMemo(() => {
     if (!content) return [];
 
-    // Regex to split by block math $$...$$ first, then inline math $...$
-    // Pattern matches $$...$$ or $...$
+    // 1. Decode common HTML entities that might have been escaped
+    let decoded = content
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&nbsp;/g, ' ');
+
+    // 2. Normalize LaTeX delimiter notations: \[ ... \] -> $$ ... $$, \( ... \) -> $ ... $
+    decoded = decoded.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
+    decoded = decoded.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+
+    // 3. Regex to split by block math $$...$$ first, then inline math $...$
     const mathRegex = /(\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g;
-    const parts = content.split(mathRegex);
+    const parts = decoded.split(mathRegex);
 
     return parts.map((part, index) => {
       if (!part) return null;
@@ -67,7 +79,7 @@ export const LatexRenderer: React.FC<LatexRendererProps> = ({
           return (
             <span
               key={index}
-              className="inline-block px-0.5 select-all"
+              className="inline-block px-0.5 select-all align-middle"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
@@ -78,6 +90,37 @@ export const LatexRenderer: React.FC<LatexRendererProps> = ({
             </code>
           );
         }
+      }
+
+      // 4. Auto-detect raw LaTeX commands if not delimited by $
+      // e.g. \frac{a}{b}, \sqrt{x}, \int_0^\infty, \sum_{i=1}^n
+      const rawLatexRegex = /(\\(?:frac|sqrt|sum|int|iint|iiint|prod|lim|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|phi|omega|partial|nabla|infty|times|div|pm|leq|geq|neq|approx|subset|in|notin|forall|exists|vec|hat|bar|text|mathbf|mathit)\b[^{$\s]*(?:\{[^}]*\})*)/g;
+      if (rawLatexRegex.test(part)) {
+        const subTokens = part.split(/(\\(?:frac|sqrt|sum|int|prod|lim|alpha|beta|gamma|delta|theta|lambda|omega|partial|infty|times|leq|geq)\b(?:\{[^}]*\})*)/g);
+        return (
+          <span key={index}>
+            {subTokens.map((st, sidx) => {
+              if (st.startsWith('\\')) {
+                try {
+                  const html = katex.renderToString(st, {
+                    displayMode: false,
+                    throwOnError: false,
+                  });
+                  return (
+                    <span
+                      key={sidx}
+                      className="inline-block px-0.5 select-all align-middle"
+                      dangerouslySetInnerHTML={{ __html: html }}
+                    />
+                  );
+                } catch {
+                  return <span key={sidx}>{st}</span>;
+                }
+              }
+              return <span key={sidx} className="whitespace-pre-wrap">{st}</span>;
+            })}
+          </span>
+        );
       }
 
       // Check for markdown image syntax: ![alt](url)

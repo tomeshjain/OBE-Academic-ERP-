@@ -222,8 +222,6 @@ export const ScoringComponentsView: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-1">
-              <span>Menu Item 6</span>
-              <span>&bull;</span>
               <span>Course-Connected Evaluation Framework</span>
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">
@@ -542,7 +540,7 @@ export const ScoringComponentsView: React.FC = () => {
                         {qp?.title || `${sub.name} Blueprint`}
                       </div>
                       <div className="text-[11px] text-slate-500">
-                        Total Marks: {qp?.totalMarks || sub.maxMarks}M &bull; Configured in Menu Item 7
+                        Total Marks: {qp?.totalMarks || sub.maxMarks}M &bull; Configured in Assessment &amp; Question Papers
                       </div>
                     </div>
                   </div>

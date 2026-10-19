@@ -132,7 +132,7 @@ export const RegulationsView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-teal-400 bg-teal-950/80 px-3 py-1 rounded-full border border-teal-800/80">
-                Menu Item 2
+                Academic Regulations
               </span>
               <span className="text-xs text-slate-400">Curricular Framework & Statutory Policies &bull; Batch 2026</span>
             </div>

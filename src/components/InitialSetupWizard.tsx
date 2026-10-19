@@ -128,9 +128,8 @@ export const InitialSetupWizard: React.FC<InitialSetupWizardProps> = ({ onCancel
                 onChange={(e) => setTheme(e.target.value as AppTheme)}
                 className="bg-transparent text-slate-300 text-xs font-medium focus:outline-none cursor-pointer"
               >
-                <option value="zen-minimalist" className="bg-slate-900 text-white">Zen Minimalist (Light)</option>
-                <option value="clean-light" className="bg-slate-900 text-white">Clean Light</option>
                 <option value="obsidian-black" className="bg-slate-900 text-white">Obsidian Black (Dark)</option>
+                <option value="clean-light" className="bg-slate-900 text-white">Clean Light</option>
               </select>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-950 px-2.5 py-1 rounded-full border border-indigo-800">

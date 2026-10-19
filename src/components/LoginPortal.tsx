@@ -263,9 +263,8 @@ export const LoginPortal: React.FC = () => {
   };
 
   const themesList: Array<{ id: AppTheme; name: string; desc: string }> = [
-    { id: 'zen-minimalist', name: 'Zen Minimalist', desc: 'Serene warm washi paper light theme' },
-    { id: 'clean-light', name: 'Clean Light', desc: 'Crisp university daylight modern light theme' },
     { id: 'obsidian-black', name: 'Obsidian Black', desc: 'High-contrast pure OLED black mode' },
+    { id: 'clean-light', name: 'Clean Light', desc: 'Crisp university daylight modern light theme' },
   ];
 
   // If system is completely empty and user clicked Initial Setup Wizard

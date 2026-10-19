@@ -37,6 +37,9 @@ import {
   Copy,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
+  Sliders,
+  Settings2,
   BookOpen,
   Calendar,
   Save,
@@ -154,14 +157,18 @@ export const AssessmentQuestionsView: React.FC = () => {
   }, [activeCourse, selectedSubCompId, currentSubComponents, questionPapers, getOrCreateQuestionPaperForSubComponent]);
 
   // Sections of the active Question Paper
-  const currentPaperSections = questionPaperSections.filter(
-    (s) => s.questionPaperId === activeQuestionPaper?.id
-  );
+  const currentPaperSections = useMemo(() => {
+    return questionPaperSections
+      .filter((s) => s.questionPaperId === activeQuestionPaper?.id)
+      .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+  }, [questionPaperSections, activeQuestionPaper?.id]);
 
   // Questions of the active Question Paper
-  const currentPaperQuestions = questions.filter(
-    (q) => q.questionPaperId === activeQuestionPaper?.id
-  );
+  const currentPaperQuestions = useMemo(() => {
+    return questions
+      .filter((q) => q.questionPaperId === activeQuestionPaper?.id)
+      .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+  }, [questions, activeQuestionPaper?.id]);
 
   // Filter COs for active course
   const currentCourseOutcomes = courseOutcomes.filter(
@@ -210,6 +217,39 @@ export const AssessmentQuestionsView: React.FC = () => {
   const [viewLayout, setViewLayout] = useState<'cards' | 'table'>('cards');
   const [showExamPaperPreview, setShowExamPaperPreview] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Customizable Print / PDF Options
+  const [printOptions, setPrintOptions] = useState({
+    showSignatures: true,
+    showCoBlooms: true,
+    showInstructions: true,
+    showInstituteHeader: true,
+    showMarks: true,
+  });
+
+  const handleMoveQuestion = (qId: string, direction: 'up' | 'down', list: QuestionItem[]) => {
+    const index = list.findIndex((q) => q.id === qId);
+    if (index === -1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= list.length) return;
+
+    const currentQ = list[index];
+    const targetQ = list[targetIndex];
+
+    const currentOrder = currentQ.displayOrder ?? index + 1;
+    const targetOrder = targetQ.displayOrder ?? targetIndex + 1;
+
+    let newCurrentOrder = targetOrder;
+    let newTargetOrder = currentOrder;
+    if (currentOrder === targetOrder) {
+      newCurrentOrder = direction === 'up' ? targetOrder - 1 : targetOrder + 1;
+      newTargetOrder = targetOrder;
+    }
+
+    updateQuestion(currentQ.id, { displayOrder: newCurrentOrder });
+    updateQuestion(targetQ.id, { displayOrder: newTargetOrder });
+    showMsg(`Moved question ${currentQ.questionNumber} ${direction}.`);
+  };
 
   // Modals kept only when truly appropriate
   const [modalType, setModalType] = useState<
@@ -739,34 +779,15 @@ export const AssessmentQuestionsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick Actions: Preview, Print, Download PDF, Save Template, Apply Template, Bulk Upload */}
+            {/* Quick Actions: Preview & Print Paper, Save Template, Apply Template, Bulk Upload */}
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setShowExamPaperPreview(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-teal-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors shadow-sm"
-                title="Preview Official University Examination Paper"
+                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold border border-indigo-500 transition-colors shadow-sm"
+                title="Preview Official University Examination Paper (with customizable print & PDF download)"
               >
                 <Eye className="w-3.5 h-3.5" />
-                <span>Preview Paper</span>
-              </button>
-
-              <button
-                onClick={handlePrintPaper}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors shadow-sm"
-                title="Print Official Examination Paper (isolated PDF output)"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Print Paper</span>
-              </button>
-
-              <button
-                onClick={handleDownloadPaperPdf}
-                disabled={isGeneratingPdf}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors shadow-sm disabled:opacity-50"
-                title="Export High-Resolution Vector PDF Document"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>{isGeneratingPdf ? 'Generating...' : 'Download PDF'}</span>
+                <span>Preview &amp; Print Paper</span>
               </button>
 
               {canManageCourse ? (
@@ -1276,6 +1297,28 @@ export const AssessmentQuestionsView: React.FC = () => {
 
                                   {canManageCourse && (
                                     <div className="flex items-center gap-1.5">
+                                      {/* Question Reorder Controls */}
+                                      <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveQuestion(q.id, 'up', sectionQuestions)}
+                                          disabled={qIdx === 0}
+                                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                                          title="Move Question Up"
+                                        >
+                                          <ChevronUp className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveQuestion(q.id, 'down', sectionQuestions)}
+                                          disabled={qIdx === sectionQuestions.length - 1}
+                                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                                          title="Move Question Down"
+                                        >
+                                          <ChevronDown className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+
                                       <button
                                         onClick={() => openEditQuestionModal(q)}
                                         className="px-2 py-1 rounded-lg text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors flex items-center gap-1 text-[11px] font-medium"
@@ -1335,7 +1378,7 @@ export const AssessmentQuestionsView: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                            {sectionQuestions.map((q) => {
+                            {sectionQuestions.map((q, qIdx) => {
                               const matchedCo = currentCourseOutcomes.find((c) => c.id === q.courseOutcomeId);
                               return (
                                 <tr key={q.id} className="hover:bg-slate-800/30 transition-colors">
@@ -1439,6 +1482,24 @@ export const AssessmentQuestionsView: React.FC = () => {
                                   {canManageCourse && (
                                     <td className="px-4 py-2.5 text-right">
                                       <div className="flex items-center justify-end gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveQuestion(q.id, 'up', sectionQuestions)}
+                                          disabled={qIdx === 0}
+                                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                                          title="Move Question Up"
+                                        >
+                                          <ChevronUp className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveQuestion(q.id, 'down', sectionQuestions)}
+                                          disabled={qIdx === sectionQuestions.length - 1}
+                                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+                                          title="Move Question Down"
+                                        >
+                                          <ChevronDown className="w-3.5 h-3.5" />
+                                        </button>
                                         <button
                                           onClick={() => openEditQuestionModal(q)}
                                           className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
@@ -2277,6 +2338,61 @@ export const AssessmentQuestionsView: React.FC = () => {
               </div>
             </div>
 
+            {/* Print & Export Customization Options Bar */}
+            <div className="bg-slate-900/90 border-b border-slate-800 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-1.5 text-slate-300 font-bold">
+                <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Customizable Document Options:</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 text-xs">
+                <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={printOptions.showSignatures}
+                    onChange={(e) => setPrintOptions((p) => ({ ...p, showSignatures: e.target.checked }))}
+                    className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+                  />
+                  <span>Official Signatures</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={printOptions.showCoBlooms}
+                    onChange={(e) => setPrintOptions((p) => ({ ...p, showCoBlooms: e.target.checked }))}
+                    className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+                  />
+                  <span>CO &amp; Bloom's Tags</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={printOptions.showInstructions}
+                    onChange={(e) => setPrintOptions((p) => ({ ...p, showInstructions: e.target.checked }))}
+                    className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+                  />
+                  <span>Candidate Instructions</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={printOptions.showInstituteHeader}
+                    onChange={(e) => setPrintOptions((p) => ({ ...p, showInstituteHeader: e.target.checked }))}
+                    className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+                  />
+                  <span>University Header</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={printOptions.showMarks}
+                    onChange={(e) => setPrintOptions((p) => ({ ...p, showMarks: e.target.checked }))}
+                    className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+                  />
+                  <span>Question Marks</span>
+                </label>
+              </div>
+            </div>
+
             {/* Scrollable Document Container */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-950/60">
               {/* THE OFFICIAL PRINTABLE QUESTION PAPER (White Paper Style) */}
@@ -2285,17 +2401,19 @@ export const AssessmentQuestionsView: React.FC = () => {
                 className="bg-white text-slate-900 p-8 sm:p-12 max-w-4xl mx-auto rounded-xl shadow-xl font-serif space-y-6 border border-slate-200"
               >
                 {/* Official University Header */}
-                <div className="text-center space-y-1.5 border-b-2 border-slate-900 pb-4">
-                  <h1 className="text-lg sm:text-xl font-bold uppercase tracking-wider text-slate-950">
-                    {tenant?.name || 'Central University of Technology'}
-                  </h1>
-                  <h2 className="text-xs sm:text-sm font-semibold uppercase tracking-wide text-slate-700">
-                    Faculty of Engineering &bull; Course: {activeCourse ? `${activeCourse.code} - ${activeCourse.title}` : 'Engineering & Technology'}
-                  </h2>
-                  <div className="text-xs font-bold uppercase text-slate-800 pt-1">
-                    {activeQuestionPaper?.title || 'Continuous Internal Assessment Examination'} &bull; Academic Year 2025-26
+                {printOptions.showInstituteHeader && (
+                  <div className="text-center space-y-1.5 border-b-2 border-slate-900 pb-4">
+                    <h1 className="text-lg sm:text-xl font-bold uppercase tracking-wider text-slate-950">
+                      {tenant?.name || 'Central University of Technology'}
+                    </h1>
+                    <h2 className="text-xs sm:text-sm font-semibold uppercase tracking-wide text-slate-700">
+                      Faculty of Engineering &bull; Course: {activeCourse ? `${activeCourse.code} - ${activeCourse.title}` : 'Engineering & Technology'}
+                    </h2>
+                    <div className="text-xs font-bold uppercase text-slate-800 pt-1">
+                      {activeQuestionPaper?.title || 'Continuous Internal Assessment Examination'} &bull; Academic Year 2025-26
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Course & Exam Meta Details Table */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs border border-slate-300 p-3 bg-slate-50 rounded">
@@ -2318,17 +2436,19 @@ export const AssessmentQuestionsView: React.FC = () => {
                 </div>
 
                 {/* Candidate Instructions */}
-                <div className="border border-slate-300 p-3 text-[11px] bg-slate-50/50 rounded space-y-1">
-                  <div className="font-bold uppercase tracking-wider text-[10px] text-slate-700">
-                    General Instructions to Candidates:
+                {printOptions.showInstructions && (
+                  <div className="border border-slate-300 p-3 text-[11px] bg-slate-50/50 rounded space-y-1">
+                    <div className="font-bold uppercase tracking-wider text-[10px] text-slate-700">
+                      General Instructions to Candidates:
+                    </div>
+                    <ol className="list-decimal pl-4 space-y-0.5 text-slate-700 leading-normal">
+                      <li>Read each question carefully and answer according to the section instructions.</li>
+                      <li>Where internal choice is indicated with <strong>[— OR —]</strong>, answer either Option A or Option B.</li>
+                      <li>Mathematical equations, symbols, and formulas follow standard scientific conventions.</li>
+                      <li>Assume suitable missing data if any, and state assumptions explicitly.</li>
+                    </ol>
                   </div>
-                  <ol className="list-decimal pl-4 space-y-0.5 text-slate-700 leading-normal">
-                    <li>Read each question carefully and answer according to the section instructions.</li>
-                    <li>Where internal choice is indicated with <strong>[— OR —]</strong>, answer either Option A or Option B.</li>
-                    <li>Mathematical equations, symbols, and formulas follow standard scientific conventions.</li>
-                    <li>Assume suitable missing data if any, and state assumptions explicitly.</li>
-                  </ol>
-                </div>
+                )}
 
                 {/* Sections and Questions */}
                 <div className="space-y-6 pt-2">
@@ -2393,12 +2513,18 @@ export const AssessmentQuestionsView: React.FC = () => {
                                   </div>
 
                                   {/* Right-aligned Marks and Attainment Tags */}
-                                  <div className="text-right shrink-0 whitespace-nowrap pl-2">
-                                    <span className="font-bold text-slate-900">[{q.maxMarks}M]</span>
-                                    <span className="block text-[10px] text-slate-600 font-sans">
-                                      [{matchedCo?.code || 'CO'}, {q.bloomsLevel}]
-                                    </span>
-                                  </div>
+                                  {(printOptions.showMarks || printOptions.showCoBlooms) && (
+                                    <div className="text-right shrink-0 whitespace-nowrap pl-2">
+                                      {printOptions.showMarks && (
+                                        <span className="font-bold text-slate-900">[{q.maxMarks}M]</span>
+                                      )}
+                                      {printOptions.showCoBlooms && (
+                                        <span className="block text-[10px] text-slate-600 font-sans">
+                                          [{matchedCo?.code || 'CO'}, {q.bloomsLevel}]
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </React.Fragment>
                             );
@@ -2409,21 +2535,23 @@ export const AssessmentQuestionsView: React.FC = () => {
                   })}
                 </div>
 
-                {/* Document Sign-Off Footer */}
-                <div className="pt-8 border-t-2 border-slate-900 grid grid-cols-3 gap-4 text-center text-[11px] text-slate-700">
-                  <div>
-                    <div className="h-8"></div>
-                    <div className="border-t border-slate-400 pt-1 font-semibold">Course Instructor</div>
+                {/* Document Sign-Off Footer (Customizable) */}
+                {printOptions.showSignatures && (
+                  <div className="pt-8 border-t-2 border-slate-900 grid grid-cols-3 gap-4 text-center text-[11px] text-slate-700">
+                    <div>
+                      <div className="h-8"></div>
+                      <div className="border-t border-slate-400 pt-1 font-semibold">Course Instructor</div>
+                    </div>
+                    <div>
+                      <div className="h-8"></div>
+                      <div className="border-t border-slate-400 pt-1 font-semibold">Course Coordinator</div>
+                    </div>
+                    <div>
+                      <div className="h-8"></div>
+                      <div className="border-t border-slate-400 pt-1 font-semibold">Head of Department</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="h-8"></div>
-                    <div className="border-t border-slate-400 pt-1 font-semibold">Course Coordinator</div>
-                  </div>
-                  <div>
-                    <div className="h-8"></div>
-                    <div className="border-t border-slate-400 pt-1 font-semibold">Head of Department</div>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </div>

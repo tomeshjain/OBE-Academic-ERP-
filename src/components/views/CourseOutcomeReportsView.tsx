@@ -72,6 +72,16 @@ export const CourseOutcomeReportsView: React.FC = () => {
   const [indirectWeight, setIndirectWeight] = useState(config.indirectWeight);
   const [defaultTargetLevel, setDefaultTargetLevel] = useState(config.defaultTargetLevel);
 
+  // Customizable Print / PDF Options for Accreditation Dossier
+  const [printOptions, setPrintOptions] = useState({
+    showSignatures: true,
+    showGapAnalysis: true,
+    showCqiPlan: true,
+    showCoPoMatrix: true,
+    showQuestionBreakdown: true,
+    showInstituteHeader: true,
+  });
+
   const handlePrintReport = () => {
     printElement(
       'printable-attainment-report',
@@ -289,23 +299,23 @@ export const CourseOutcomeReportsView: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-1">
-              <span>Menu Item 9</span>
-              <span>&bull;</span>
               <span>Outcome-Based Education Analytics</span>
+              <span>&bull;</span>
+              <span>Accreditation Compliance</span>
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">
               Course Outcome Reports
             </h1>
             <p className="text-slate-400 text-sm mt-1">
-              Multi-tier NBA/ABET attainment engine computing Course Outcome (CO) direct/indirect achievement and Program Outcome (PO/PSO) articulation.
+              Multi-tier NBA/NAAC/ABET attainment engine computing Course Outcome (CO) achievement, Target vs Attained Gap Analysis, and Continuous Quality Improvement (CQI).
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={handlePrintReport}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              title="Print Attainment Dossier (isolated output)"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+              title="Print Attainment Dossier (with customizable sections & signatures)"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print Dossier</span>
@@ -351,7 +361,7 @@ export const CourseOutcomeReportsView: React.FC = () => {
                 }`}
               >
                 <Target className="w-3.5 h-3.5" />
-                <span>PO/PSO Matrix & Radar</span>
+                <span>PO/PSO Matrix &amp; Radar</span>
               </button>
               <button
                 onClick={() => switchSubTab('accreditation')}
@@ -362,9 +372,73 @@ export const CourseOutcomeReportsView: React.FC = () => {
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>Audit Summary</span>
+                <span>Accreditation Dossier</span>
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Customizable Report & Print Options Bar */}
+        <div className="mt-5 pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-1.5 text-slate-300 font-bold">
+            <Sliders className="w-3.5 h-3.5 text-teal-400" />
+            <span>Customizable Report &amp; Print Options:</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-4 text-xs">
+            <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={printOptions.showSignatures}
+                onChange={(e) => setPrintOptions((p) => ({ ...p, showSignatures: e.target.checked }))}
+                className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+              />
+              <span>Official Signatures</span>
+            </label>
+            <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={printOptions.showGapAnalysis}
+                onChange={(e) => setPrintOptions((p) => ({ ...p, showGapAnalysis: e.target.checked }))}
+                className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+              />
+              <span>Gap Analysis</span>
+            </label>
+            <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={printOptions.showCqiPlan}
+                onChange={(e) => setPrintOptions((p) => ({ ...p, showCqiPlan: e.target.checked }))}
+                className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+              />
+              <span>CQI Action Plan</span>
+            </label>
+            <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={printOptions.showCoPoMatrix}
+                onChange={(e) => setPrintOptions((p) => ({ ...p, showCoPoMatrix: e.target.checked }))}
+                className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+              />
+              <span>CO-PO Articulation</span>
+            </label>
+            <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={printOptions.showQuestionBreakdown}
+                onChange={(e) => setPrintOptions((p) => ({ ...p, showQuestionBreakdown: e.target.checked }))}
+                className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+              />
+              <span>Question-Level Drilldown</span>
+            </label>
+            <label className="flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={printOptions.showInstituteHeader}
+                onChange={(e) => setPrintOptions((p) => ({ ...p, showInstituteHeader: e.target.checked }))}
+                className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
+              />
+              <span>Institutional Header</span>
+            </label>
           </div>
         </div>
 
@@ -380,7 +454,7 @@ export const CourseOutcomeReportsView: React.FC = () => {
               className="bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500"
             >
               {displayedCourses.length === 0 ? (
-                <option value="">No courses created (See Menu 5)</option>
+                <option value="">No courses created (See Courses &amp; Curriculum)</option>
               ) : (
                 displayedCourses.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -401,7 +475,7 @@ export const CourseOutcomeReportsView: React.FC = () => {
               className="bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500"
             >
               {displayedPrograms.length === 0 ? (
-                <option value="">No programs created (See Menu 3)</option>
+                <option value="">No programs created (See Programs &amp; Outcomes)</option>
               ) : (
                 displayedPrograms.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -463,25 +537,32 @@ export const CourseOutcomeReportsView: React.FC = () => {
           <p className="text-slate-400 text-xs mt-1 max-w-lg mx-auto">
             To compute attainment reports, ensure you have:
             <br />
-            1. Defined Course Outcomes in <strong>Menu 5 (Courses)</strong>
+            1. Defined Course Outcomes in <strong>Courses &amp; Curriculum</strong>
             <br />
-            2. Prepared Questions in <strong>Menu 7 (Assessment & Question Papers)</strong>
+            2. Prepared Questions in <strong>Assessment &amp; Question Papers</strong>
             <br />
-            3. Enrolled students and entered marks in <strong>Menu 8 (Filling of Question Wise Marks)</strong>
+            3. Enrolled students and entered marks in <strong>Mark Entry Matrix</strong>
           </p>
         </div>
       ) : (
         <div id="printable-attainment-report" className="space-y-6">
           {/* Printable Official Header for Attainment Dossier */}
-          <div className="hidden print:block p-6 border-b-2 border-slate-900 mb-4 text-center bg-white text-slate-950 font-serif">
-            <h1 className="text-xl font-bold uppercase tracking-wider">{tenant?.name || 'CENTRAL UNIVERSITY'}</h1>
-            <h2 className="text-sm font-semibold uppercase text-slate-700 mt-1">
-              {activeCourse?.code} - {activeCourse?.title} OBE Attainment Dossier
-            </h2>
-            <div className="text-xs text-slate-600 mt-1">
-              Program: {activeProgram?.name} &bull; Scope: {activeSection?.name || (selectedSectionId === 'ALL' ? 'Course-wide Aggregate' : 'Section')} &bull; AY 2026-27
+          {printOptions.showInstituteHeader && (
+            <div className="p-6 border-b-2 border-slate-900 mb-4 text-center bg-white text-slate-950 font-serif rounded-xl border border-slate-200 shadow-sm">
+              <h1 className="text-xl sm:text-2xl font-bold uppercase tracking-wider text-slate-950">
+                {tenant?.name || 'CENTRAL UNIVERSITY OF TECHNOLOGY'}
+              </h1>
+              <h2 className="text-sm sm:text-base font-semibold uppercase text-slate-700 mt-1">
+                {activeCourse?.code} - {activeCourse?.title} OBE Attainment Dossier
+              </h2>
+              <div className="text-xs text-slate-600 mt-1">
+                Program: {activeProgram?.name} &bull; Scope: {activeSection?.name || (selectedSectionId === 'ALL' ? 'Course-wide Aggregate' : 'Section')} &bull; Academic Year 2026-27
+              </div>
+              <div className="text-[11px] text-slate-500 font-mono mt-1">
+                Accreditation Standards: NBA Tier-I (Criterion 3) &bull; NAAC Criterion 2.6.2 &bull; ABET EAC Criterion 3 &amp; 4
+              </div>
             </div>
-          </div>
+          )}
 
           {/* SUB-TAB 1: CO ATTAINMENT ANALYSIS */}
           {activeSubTab === 'co' && (
@@ -624,74 +705,282 @@ export const CourseOutcomeReportsView: React.FC = () => {
               </div>
 
               {/* Question Level Direct Attainment Drilldown */}
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                <div className="p-4 border-b border-slate-800">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <FileSpreadsheet className="w-4 h-4 text-teal-400" />
-                    <span>Question-Level Direct Attainment Breakdown</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Evaluates students scoring &ge; {config.targetCutoffPct}% of maximum marks for each question item.
-                  </p>
-                </div>
+              {printOptions.showQuestionBreakdown && (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                  <div className="p-4 border-b border-slate-800">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FileSpreadsheet className="w-4 h-4 text-teal-400" />
+                      <span>Question-Level Direct Attainment Breakdown</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Evaluates students scoring &ge; {config.targetCutoffPct}% of maximum marks for each question item.
+                    </p>
+                  </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-                        <th className="px-4 py-3">Question</th>
-                        <th className="px-4 py-3">Max Marks</th>
-                        <th className="px-4 py-3">Threshold Score</th>
-                        <th className="px-4 py-3 text-center">Enrolled</th>
-                        <th className="px-4 py-3 text-center">Assessed</th>
-                        <th className="px-4 py-3 text-center">Absentees</th>
-                        <th className="px-4 py-3 text-center">Students &ge; Threshold</th>
-                        <th className="px-4 py-3 text-center">Attainment %</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
-                      {report.questionAttainments.map((q) => (
-                        <tr key={q.questionId} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="px-4 py-3 font-bold text-white">
-                            {q.questionNumber}
-                          </td>
-                          <td className="px-4 py-3 text-slate-400">
-                            {q.maxMarks}M
-                          </td>
-                          <td className="px-4 py-3 text-indigo-300 font-semibold">
-                            {q.thresholdScore.toFixed(1)}M ({q.targetThresholdPct}%)
-                          </td>
-                          <td className="px-4 py-3 text-center text-slate-400">
-                            {q.totalEnrolled}
-                          </td>
-                          <td className="px-4 py-3 text-center font-bold text-white">
-                            {q.totalAssessed}
-                          </td>
-                          <td className="px-4 py-3 text-center text-slate-500">
-                            {q.totalAbsentees}
-                          </td>
-                          <td className="px-4 py-3 text-center font-bold text-emerald-400">
-                            {q.studentsAttained}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span
-                              className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                                q.attainmentPercentage >= 70
-                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                  : q.attainmentPercentage >= 60
-                                  ? 'bg-indigo-950 text-indigo-300 border border-indigo-800'
-                                  : 'bg-amber-950 text-amber-300 border border-amber-800'
-                              }`}
-                            >
-                              {q.attainmentPercentage.toFixed(1)}%
-                            </span>
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                          <th className="px-4 py-3">Question</th>
+                          <th className="px-4 py-3">Max Marks</th>
+                          <th className="px-4 py-3">Threshold Score</th>
+                          <th className="px-4 py-3 text-center">Enrolled</th>
+                          <th className="px-4 py-3 text-center">Assessed</th>
+                          <th className="px-4 py-3 text-center">Absentees</th>
+                          <th className="px-4 py-3 text-center">Students &ge; Threshold</th>
+                          <th className="px-4 py-3 text-center">Attainment %</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
+                        {report.questionAttainments.map((q) => (
+                          <tr key={q.questionId} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="px-4 py-3 font-bold text-white">
+                              {q.questionNumber}
+                            </td>
+                            <td className="px-4 py-3 text-slate-400">
+                              {q.maxMarks}M
+                            </td>
+                            <td className="px-4 py-3 text-indigo-300 font-semibold">
+                              {q.thresholdScore.toFixed(1)}M ({q.targetThresholdPct}%)
+                            </td>
+                            <td className="px-4 py-3 text-center text-slate-400">
+                              {q.totalEnrolled}
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold text-white">
+                              {q.totalAssessed}
+                            </td>
+                            <td className="px-4 py-3 text-center text-slate-500">
+                              {q.totalAbsentees}
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold text-emerald-400">
+                              {q.studentsAttained}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                  q.attainmentPercentage >= 70
+                                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                    : q.attainmentPercentage >= 60
+                                    ? 'bg-indigo-950 text-indigo-300 border border-indigo-800'
+                                    : 'bg-amber-950 text-amber-300 border border-amber-800'
+                                }`}
+                              >
+                                {q.attainmentPercentage.toFixed(1)}%
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* ACCREDITATION TABLE: TARGET VS ATTAINED GAP ANALYSIS (NBA CRITERION 3) */}
+              {printOptions.showGapAnalysis && (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                  <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Target className="w-4 h-4 text-amber-400" />
+                        <span>Accreditation Target vs. Attained Gap Analysis (NBA Criterion 3.2)</span>
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Mandated gap assessment between Program-specified Target Attainment (Scale 0-3.0) and Cumulative Evaluation.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                      Target Threshold: {config.defaultTargetLevel.toFixed(1)} / 3.0
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                          <th className="px-4 py-3">CO Code</th>
+                          <th className="px-4 py-3 min-w-[220px]">Course Outcome Statement</th>
+                          <th className="px-4 py-3 text-center">Target Level</th>
+                          <th className="px-4 py-3 text-center">Attained Level</th>
+                          <th className="px-4 py-3 text-center">Variance / Gap</th>
+                          <th className="px-4 py-3 text-center">Attainment Status</th>
+                          <th className="px-4 py-3 text-center">Deficit Category</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                        {report.overallCoAttainments.map((co) => {
+                          const gap = co.overallScore - co.targetLevel;
+                          const gapCategory =
+                            gap >= 0
+                              ? 'Target Achieved'
+                              : gap >= -0.25
+                              ? 'Marginal Deficit'
+                              : 'Critical Gap';
+
+                          return (
+                            <tr key={co.courseOutcomeId} className="hover:bg-slate-800/30 transition-colors">
+                              <td className="px-4 py-3 font-mono font-bold text-indigo-300">
+                                {co.courseOutcomeCode}
+                              </td>
+                              <td className="px-4 py-3 text-slate-300 text-xs">
+                                {co.statement}
+                              </td>
+                              <td className="px-4 py-3 text-center font-mono text-slate-400">
+                                {co.targetLevel.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-center font-mono font-bold text-white">
+                                {co.overallScore.toFixed(2)}
+                              </td>
+                              <td
+                                className={`px-4 py-3 text-center font-mono font-bold ${
+                                  gap >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                                }`}
+                              >
+                                {gap >= 0 ? `+${gap.toFixed(2)}` : gap.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                    co.isAttained
+                                      ? 'bg-emerald-950 border border-emerald-800 text-emerald-300'
+                                      : 'bg-rose-950 border border-rose-800 text-rose-300'
+                                  }`}
+                                >
+                                  {co.isAttained ? 'Attained' : 'Gap Exists'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    gap >= 0
+                                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
+                                      : gap >= -0.25
+                                      ? 'bg-amber-950/80 text-amber-400 border border-amber-800'
+                                      : 'bg-rose-950/80 text-rose-400 border border-rose-800'
+                                  }`}
+                                >
+                                  {gapCategory}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ACCREDITATION TABLE: CONTINUOUS QUALITY IMPROVEMENT (CQI) ACTION PLAN (NBA CRITERION 3.3) */}
+              {printOptions.showCqiPlan && (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                  <div className="p-4 border-b border-slate-800">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-teal-400" />
+                      <span>Continuous Quality Improvement (CQI) Action Plan (NBA Criterion 3.3 / NAAC 2.6.2)</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Formal corrective actions mandated by the Department Academic Committee (DAC) for Course Outcomes with learning deficits or attainment gaps.
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                          <th className="px-4 py-3 w-24">CO Code</th>
+                          <th className="px-4 py-3 w-32 text-center">Status &amp; Gap</th>
+                          <th className="px-4 py-3 min-w-[200px]">Diagnostic Root Cause Analysis</th>
+                          <th className="px-4 py-3 min-w-[220px]">Corrective / Remedial Action Proposed</th>
+                          <th className="px-4 py-3 w-40">Responsible Authority</th>
+                          <th className="px-4 py-3 w-32 text-center">Review Timeline</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                        {report.overallCoAttainments.map((co) => {
+                          const gap = co.overallScore - co.targetLevel;
+                          const defaultAction =
+                            co.isAttained
+                              ? 'Attainment target fulfilled. Continue existing pedagogy, enhance self-learning and open-ended challenge questions.'
+                              : gap >= -0.25
+                              ? 'Marginal gap detected. Conduct 2 dedicated tutorial sessions, provide structured revision worksheets, and include formative quizzes.'
+                              : 'Critical attainment gap. Redesign course delivery module, introduce hands-on laboratory simulation drills, and organize peer-assisted mentoring.';
+
+                          const defaultWeakness =
+                            co.isAttained
+                              ? 'Cohort demonstrated solid conceptual grasp and consistent threshold achievement.'
+                              : gap >= -0.25
+                              ? 'Minor drop in higher-order cognitive application questions during continuous internal evaluations.'
+                              : 'Difficulty observed in multi-step analytical problem solving and design implementation components.';
+
+                          return (
+                            <tr key={co.courseOutcomeId} className="hover:bg-slate-800/30 transition-colors">
+                              <td className="px-4 py-3 font-mono font-bold text-indigo-300">
+                                {co.courseOutcomeCode}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    co.isAttained
+                                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                      : 'bg-rose-950 text-rose-300 border border-rose-800'
+                                  }`}
+                                >
+                                  {co.isAttained ? 'Satisfied' : `Gap (${gap.toFixed(2)})`}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-slate-400 text-xs">
+                                {defaultWeakness}
+                              </td>
+                              <td className="px-4 py-3 text-slate-200 text-xs font-medium">
+                                {defaultAction}
+                              </td>
+                              <td className="px-4 py-3 text-slate-300 font-semibold">
+                                {activeSection?.facultyName || 'Course Coordinator & Faculty'}
+                              </td>
+                              <td className="px-4 py-3 text-center font-mono text-slate-400 text-xs">
+                                Next Academic Cycle
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* DOCUMENT SIGN-OFF FOOTER (OFFICIAL ACADEMIC SIGNATURES) */}
+              {printOptions.showSignatures && (
+                <div className="bg-white text-slate-900 p-8 rounded-2xl border border-slate-300 shadow-lg font-serif">
+                  <div className="text-center font-bold text-xs uppercase tracking-wider text-slate-600 mb-6 border-b border-slate-200 pb-2">
+                    Official Institutional Accreditation Sign-Off &amp; Academic Committee Endorsement
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center text-xs text-slate-800">
+                    <div>
+                      <div className="h-10"></div>
+                      <div className="border-t-2 border-slate-900 pt-1.5 font-bold uppercase">
+                        Course Coordinator / Lead Faculty
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-sans mt-0.5">Primary Course Instructor</div>
+                    </div>
+                    <div>
+                      <div className="h-10"></div>
+                      <div className="border-t-2 border-slate-900 pt-1.5 font-bold uppercase">
+                        DAC Convener / Module Lead
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-sans mt-0.5">Department Academic Committee</div>
+                    </div>
+                    <div>
+                      <div className="h-10"></div>
+                      <div className="border-t-2 border-slate-900 pt-1.5 font-bold uppercase">
+                        Head of Department (HOD)
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-sans mt-0.5">Program Chair &amp; Final Approval</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -705,7 +994,7 @@ export const CourseOutcomeReportsView: React.FC = () => {
                     No Program Outcomes for "{activeProgram?.name}"
                   </h3>
                   <p className="text-slate-400 text-xs mt-1 max-w-md mx-auto">
-                    Each academic program maintains its own isolated POs and PSOs. Navigate to Menu Item 3 (Programs and Program Outcomes) to add POs or load NBA Reference suggestions.
+                    Each academic program maintains its own isolated POs and PSOs. Navigate to Programs &amp; Outcomes to add POs or load NBA Reference suggestions.
                   </p>
                 </div>
               ) : (
@@ -895,12 +1184,115 @@ export const CourseOutcomeReportsView: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* CO-PO ARTICULATION MATRIX (NBA CRITERION 3.1 & 3.2) */}
+              {printOptions.showCoPoMatrix && (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                  <div className="p-4 border-b border-slate-800">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Target className="w-4 h-4 text-indigo-400" />
+                      <span>Course Articulation Matrix (CO-PO / PSO Mapping &amp; Contribution)</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Correlation Levels: <strong>1</strong> (Slight/Low), <strong>2</strong> (Moderate/Medium), <strong>3</strong> (Substantial/High). Formula: &Sigma;(CO Attainment &times; Level) / &Sigma;(Levels).
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                          <th className="px-3 py-2.5 font-bold text-white w-20">CO Code</th>
+                          <th className="px-3 py-2.5 text-center w-16">Target</th>
+                          <th className="px-3 py-2.5 text-center w-16">Attained</th>
+                          {isolatedProgramOutcomes.map((po) => (
+                            <th key={po.id} className="px-2.5 py-2.5 text-center font-mono font-bold text-indigo-300">
+                              {po.code}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 text-slate-300 font-mono text-xs">
+                        {report.overallCoAttainments.map((co) => (
+                          <tr key={co.courseOutcomeId} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="px-3 py-2.5 font-bold text-white font-sans">{co.courseOutcomeCode}</td>
+                            <td className="px-3 py-2.5 text-center text-slate-400">{co.targetLevel.toFixed(1)}</td>
+                            <td className="px-3 py-2.5 text-center font-bold text-teal-300">{co.overallScore.toFixed(2)}</td>
+                            {isolatedProgramOutcomes.map((po) => {
+                              const map = coPoMappings.find(
+                                (m) => m.courseOutcomeId === co.courseOutcomeId && m.programOutcomeId === po.id
+                              );
+                              return (
+                                <td key={po.id} className="px-2.5 py-2.5 text-center">
+                                  {map && map.mappingLevel > 0 ? (
+                                    <span className="font-bold text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/60">
+                                      {map.mappingLevel}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-600">-</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                        {/* Average Mapping & Attainment Summary Row */}
+                        <tr className="bg-slate-950/80 font-bold text-white border-t-2 border-slate-700">
+                          <td colSpan={3} className="px-3 py-2.5 text-right uppercase tracking-wider text-[11px] text-slate-300">
+                            PO/PSO Direct Attained Score:
+                          </td>
+                          {isolatedProgramOutcomes.map((po) => {
+                            const poAtt = report.poAttainments.find((p) => p.programOutcomeId === po.id);
+                            return (
+                              <td key={po.id} className="px-2.5 py-2.5 text-center font-mono text-xs font-black text-amber-300">
+                                {poAtt ? poAtt.attainedLevel.toFixed(2) : '-'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* DOCUMENT SIGN-OFF FOOTER (OFFICIAL ACADEMIC SIGNATURES) */}
+              {printOptions.showSignatures && (
+                <div className="bg-white text-slate-900 p-8 rounded-2xl border border-slate-300 shadow-lg font-serif">
+                  <div className="text-center font-bold text-xs uppercase tracking-wider text-slate-600 mb-6 border-b border-slate-200 pb-2">
+                    Official Institutional Accreditation Sign-Off &amp; Academic Committee Endorsement
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center text-xs text-slate-800">
+                    <div>
+                      <div className="h-10"></div>
+                      <div className="border-t-2 border-slate-900 pt-1.5 font-bold uppercase">
+                        Course Coordinator / Lead Faculty
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-sans mt-0.5">Primary Course Instructor</div>
+                    </div>
+                    <div>
+                      <div className="h-10"></div>
+                      <div className="border-t-2 border-slate-900 pt-1.5 font-bold uppercase">
+                        DAC Convener / Module Lead
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-sans mt-0.5">Department Academic Committee</div>
+                    </div>
+                    <div>
+                      <div className="h-10"></div>
+                      <div className="border-t-2 border-slate-900 pt-1.5 font-bold uppercase">
+                        Head of Department (HOD)
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-sans mt-0.5">Program Chair &amp; Final Approval</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* SUB-TAB 3: ACCREDITATION AUDIT SUMMARY */}
           {activeSubTab === 'accreditation' && (
-            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-8 shadow-2xl print:border-none print:shadow-none print:p-0">
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-8 shadow-2xl print:border-none print:shadow-none print:p-0 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white">
@@ -911,28 +1303,28 @@ export const CourseOutcomeReportsView: React.FC = () => {
                       {tenant?.name || 'Academic Institution'}
                     </h2>
                     <div className="text-xs text-slate-400">
-                      Outcome-Based Education (OBE) Attainment Compliance Report &bull; Batch 2026
+                      Outcome-Based Education (OBE) Attainment Compliance Dossier &bull; Batch 2026
                     </div>
                   </div>
                 </div>
 
                 <button
-                  onClick={() => window.print()}
+                  onClick={handlePrintReport}
                   className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto print:hidden"
                 >
                   <Printer className="w-4 h-4" />
-                  <span>Print Formal Report</span>
+                  <span>Print Formal Dossier</span>
                 </button>
               </div>
 
               {/* Institutional & Course Metadata Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-6 border-b border-slate-800 text-xs">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-b border-slate-800 text-xs">
                 <div>
                   <span className="text-slate-500 block text-[10px] uppercase font-bold">Course</span>
                   <span className="text-white font-semibold">{activeCourse?.code} - {activeCourse?.title}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Program & Cohort</span>
+                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Program &amp; Cohort</span>
                   <span className="text-white font-semibold">{activeProgram?.name} (2026 Batch)</span>
                 </div>
                 <div>
@@ -940,15 +1332,18 @@ export const CourseOutcomeReportsView: React.FC = () => {
                   <span className="text-white font-semibold">{activeCourse?.regulation || 'R2026'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Accreditation Standard</span>
-                  <span className="text-teal-400 font-semibold">NBA Tier-I / ABET EAC / NAAC 2.6.2</span>
+                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Accreditation Standards</span>
+                  <span className="text-teal-400 font-semibold">NBA Tier-I Criterion 3 &bull; NAAC 2.6.2 &bull; ABET EAC</span>
                 </div>
               </div>
 
               {/* Summary Stats Table */}
-              <div className="pt-6 space-y-6">
+              <div className="space-y-6">
                 <div>
-                  <h4 className="text-sm font-bold text-white mb-3">Course Outcome Attainment Matrix</h4>
+                  <h4 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <Award className="w-4 h-4 text-indigo-400" />
+                    <span>Course Outcome Attainment Matrix</span>
+                  </h4>
                   <table className="w-full text-left text-xs border border-slate-800 rounded-xl overflow-hidden">
                     <thead>
                       <tr className="bg-slate-950 text-slate-400 font-semibold uppercase text-[10px]">
@@ -979,9 +1374,131 @@ export const CourseOutcomeReportsView: React.FC = () => {
                   </table>
                 </div>
 
+                {/* Target vs Attained Gap Analysis Table (Accreditation Tab) */}
+                {printOptions.showGapAnalysis && (
+                  <div>
+                    <h4 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                      <Target className="w-4 h-4 text-amber-400" />
+                      <span>Target vs. Attained Gap Analysis (NBA Criterion 3.2)</span>
+                    </h4>
+                    <table className="w-full text-left text-xs border border-slate-800 rounded-xl overflow-hidden">
+                      <thead>
+                        <tr className="bg-slate-950 text-slate-400 font-semibold uppercase text-[10px]">
+                          <th className="p-3">CO Code</th>
+                          <th className="p-3">Course Outcome Statement</th>
+                          <th className="p-3 text-center">Target Level</th>
+                          <th className="p-3 text-center">Attained Level</th>
+                          <th className="p-3 text-center">Variance / Gap</th>
+                          <th className="p-3 text-center">Compliance Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800 font-mono text-slate-300">
+                        {report.overallCoAttainments.map((co) => {
+                          const gap = co.overallScore - co.targetLevel;
+                          return (
+                            <tr key={co.courseOutcomeId}>
+                              <td className="p-3 font-bold text-indigo-300">{co.courseOutcomeCode}</td>
+                              <td className="p-3 font-sans text-xs text-slate-300">{co.statement}</td>
+                              <td className="p-3 text-center text-slate-400">{co.targetLevel.toFixed(2)}</td>
+                              <td className="p-3 text-center font-bold text-white">{co.overallScore.toFixed(2)}</td>
+                              <td className={`p-3 text-center font-bold ${gap >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {gap >= 0 ? `+${gap.toFixed(2)}` : gap.toFixed(2)}
+                              </td>
+                              <td className="p-3 text-center font-sans">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${co.isAttained ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+                                  {co.isAttained ? 'COMPLIANT' : 'DEFICIT'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* CQI Action Plan (Accreditation Tab) */}
+                {printOptions.showCqiPlan && (
+                  <div>
+                    <h4 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-teal-400" />
+                      <span>Continuous Quality Improvement (CQI) Action Plan (NBA Criterion 3.3)</span>
+                    </h4>
+                    <table className="w-full text-left text-xs border border-slate-800 rounded-xl overflow-hidden">
+                      <thead>
+                        <tr className="bg-slate-950 text-slate-400 font-semibold uppercase text-[10px]">
+                          <th className="p-3 w-20">CO Code</th>
+                          <th className="p-3 w-28 text-center">Status</th>
+                          <th className="p-3">Diagnostic Analysis</th>
+                          <th className="p-3">Mandated Corrective Action</th>
+                          <th className="p-3 w-36">Timeline</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800 text-slate-300 text-xs">
+                        {report.overallCoAttainments.map((co) => {
+                          const gap = co.overallScore - co.targetLevel;
+                          return (
+                            <tr key={co.courseOutcomeId}>
+                              <td className="p-3 font-mono font-bold text-indigo-300">{co.courseOutcomeCode}</td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${co.isAttained ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'}`}>
+                                  {co.isAttained ? 'Achieved' : `Gap (${gap.toFixed(2)})`}
+                                </span>
+                              </td>
+                              <td className="p-3 text-slate-400 text-xs">
+                                {co.isAttained
+                                  ? 'Satisfied performance standards across continuous internal evaluations and semester examinations.'
+                                  : 'Deficit identified in higher-order taxonomy cognitive application questions.'}
+                              </td>
+                              <td className="p-3 text-slate-200 text-xs">
+                                {co.isAttained
+                                  ? 'Maintain existing syllabus delivery cadence with advanced case study seminars.'
+                                  : 'Schedule 2 specialized tutorial workshops and provide structured remedial problem sets.'}
+                              </td>
+                              <td className="p-3 font-mono text-slate-400 text-xs">Next Academic Term</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
                 <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-xs text-slate-400">
                   <span className="font-bold text-slate-200">Accreditation Certification:</span> This report certifies that question-level evaluation was conducted under strict freeze-guard security in accordance with institutional outcome-based education standards for the 2026 Batch cohort.
                 </div>
+
+                {/* Academic Signatures Block in Accreditation Tab */}
+                {printOptions.showSignatures && (
+                  <div className="bg-white text-slate-900 p-8 rounded-2xl border border-slate-300 shadow-lg font-serif mt-6">
+                    <div className="text-center font-bold text-xs uppercase tracking-wider text-slate-600 mb-6 border-b border-slate-200 pb-2">
+                      Official Institutional Accreditation Sign-Off &amp; Academic Committee Endorsement
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center text-xs text-slate-800">
+                      <div>
+                        <div className="h-10"></div>
+                        <div className="border-t-2 border-slate-900 pt-1.5 font-bold uppercase">
+                          Course Coordinator / Lead Faculty
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-sans mt-0.5">Primary Course Instructor</div>
+                      </div>
+                      <div>
+                        <div className="h-10"></div>
+                        <div className="border-t-2 border-slate-900 pt-1.5 font-bold uppercase">
+                          DAC Convener / Module Lead
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-sans mt-0.5">Department Academic Committee</div>
+                      </div>
+                      <div>
+                        <div className="h-10"></div>
+                        <div className="border-t-2 border-slate-900 pt-1.5 font-bold uppercase">
+                          Head of Department (HOD)
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-sans mt-0.5">Program Chair &amp; Final Approval</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
