@@ -43,12 +43,23 @@ import {
   Check,
   User,
   ShieldCheck,
+  Printer,
+  Eye,
+  Split,
+  Image as ImageIcon,
+  LayoutGrid,
+  Table as TableIcon,
+  X,
 } from 'lucide-react';
 import { BulkDataUploadModal, BulkUploadColumn } from '@/components/BulkDataUploadModal';
 import { sanitizeInput } from '@/lib/security';
+import { LatexRenderer } from '@/components/LatexRenderer';
+import { RichQuestionEditor } from '@/components/RichQuestionEditor';
+import { printElement, downloadPdfFromElement } from '@/lib/pdf-print-utils';
 
 export const AssessmentQuestionsView: React.FC = () => {
   const {
+    tenant,
     courses,
     activeCourseId,
     setActiveCourseId,
@@ -174,9 +185,31 @@ export const AssessmentQuestionsView: React.FC = () => {
   const [qOptionGroup, setQOptionGroup] = useState('OPT_1');
   const [qOptionLabel, setQOptionLabel] = useState('Option A');
   const [qContent, setQContent] = useState('');
+  const [qImageUrl, setQImageUrl] = useState('');
+  const [qImageCaption, setQImageCaption] = useState('');
   const [qMaxMarks, setQMaxMarks] = useState(5);
   const [qCoId, setQCoId] = useState('');
   const [qBlooms, setQBlooms] = useState<BloomsTaxonomyLevel>('APPLY');
+
+  // Question editing modal state
+  const [editingQuestion, setEditingQuestion] = useState<QuestionItem | null>(null);
+  const [editQNumber, setEditQNumber] = useState('');
+  const [editQContent, setEditQContent] = useState('');
+  const [editQImageUrl, setEditQImageUrl] = useState('');
+  const [editQImageCaption, setEditQImageCaption] = useState('');
+  const [editQMaxMarks, setEditQMaxMarks] = useState(5);
+  const [editQCoId, setEditQCoId] = useState('');
+  const [editQBlooms, setEditQBlooms] = useState<BloomsTaxonomyLevel>('APPLY');
+  const [editQIsPart, setEditQIsPart] = useState(false);
+  const [editQPartLabel, setEditQPartLabel] = useState('');
+  const [editQIsOption, setEditQIsOption] = useState(false);
+  const [editQOptionGroup, setEditQOptionGroup] = useState('');
+  const [editQOptionLabel, setEditQOptionLabel] = useState('');
+
+  // View Layout: 'cards' (visual parts & options hierarchy with LaTeX) or 'table' (rapid dropdown)
+  const [viewLayout, setViewLayout] = useState<'cards' | 'table'>('cards');
+  const [showExamPaperPreview, setShowExamPaperPreview] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Modals kept only when truly appropriate
   const [modalType, setModalType] = useState<
@@ -217,9 +250,65 @@ export const AssessmentQuestionsView: React.FC = () => {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Rich Text Helpers
-  const insertFormatting = (prefix: string, suffix: string = '') => {
-    setQContent((prev) => `${prev} ${prefix}math_expression${suffix}`);
+  const openEditQuestionModal = (q: QuestionItem) => {
+    setEditingQuestion(q);
+    setEditQNumber(q.questionNumber);
+    setEditQContent(q.content || '');
+    setEditQImageUrl(q.imageUrl || '');
+    setEditQImageCaption(q.imageCaption || '');
+    setEditQMaxMarks(q.maxMarks);
+    setEditQCoId(q.courseOutcomeId);
+    setEditQBlooms(q.bloomsLevel);
+    setEditQIsPart(Boolean(q.partLabel));
+    setEditQPartLabel(q.partLabel || '');
+    setEditQIsOption(Boolean(q.isOption));
+    setEditQOptionGroup(q.optionGroup || '');
+    setEditQOptionLabel(q.optionLabel || '');
+  };
+
+  const handleSaveEditedQuestion = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingQuestion) return;
+
+    updateQuestion(editingQuestion.id, {
+      questionNumber: sanitizeInput(editQNumber).trim(),
+      content: editQContent.trim() ? sanitizeInput(editQContent).trim() : undefined,
+      imageUrl: editQImageUrl.trim() ? editQImageUrl.trim() : undefined,
+      imageCaption: editQImageCaption.trim() ? sanitizeInput(editQImageCaption).trim() : undefined,
+      maxMarks: Number(editQMaxMarks) || 5,
+      courseOutcomeId: editQCoId,
+      bloomsLevel: editQBlooms,
+      partLabel: editQIsPart ? sanitizeInput(editQPartLabel).trim() : undefined,
+      isOption: editQIsOption,
+      optionGroup: editQIsOption ? sanitizeInput(editQOptionGroup).trim() : undefined,
+      optionLabel: editQIsOption ? sanitizeInput(editQOptionLabel).trim() : undefined,
+    });
+
+    showMsg(`Updated question ${editQNumber}.`);
+    setEditingQuestion(null);
+  };
+
+  const handlePrintPaper = () => {
+    printElement(
+      'official-exam-paper-container',
+      `Examination_Paper_${activeCourse?.code || 'Course'}_${activeQuestionPaper?.title || 'Assessment'}`
+    );
+  };
+
+  const handleDownloadPaperPdf = async () => {
+    try {
+      setIsGeneratingPdf(true);
+      await downloadPdfFromElement(
+        'official-exam-paper-container',
+        `Examination_Paper_${activeCourse?.code || 'Course'}_${activeQuestionPaper?.title || 'Assessment'}.pdf`
+      );
+      showMsg('Examination paper PDF generated successfully.');
+    } catch (err) {
+      console.error(err);
+      showMsg('Failed to generate PDF. You can also use the browser print dialog.', 'error');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   // Total Marks calculated from questions
@@ -265,6 +354,8 @@ export const AssessmentQuestionsView: React.FC = () => {
     setQOptionGroup(`OPT_${count + 1}`);
     setQOptionLabel('Option A');
     setQContent('');
+    setQImageUrl('');
+    setQImageCaption('');
     setQMaxMarks(5);
     setQCoId(currentCourseOutcomes[0]?.id || '');
     setQBlooms('APPLY');
@@ -295,7 +386,9 @@ export const AssessmentQuestionsView: React.FC = () => {
       isOption: qIsOption,
       optionGroup: qIsOption ? sanitizeInput(qOptionGroup).trim() : undefined,
       optionLabel: qIsOption ? sanitizeInput(qOptionLabel).trim() : undefined,
-      content: qContent.trim() ? sanitizeInput(qContent).trim() : undefined, // Text is optional!
+      content: qContent.trim() ? sanitizeInput(qContent).trim() : undefined,
+      imageUrl: qImageUrl.trim() ? qImageUrl.trim() : undefined,
+      imageCaption: qImageCaption.trim() ? sanitizeInput(qImageCaption).trim() : undefined,
       maxMarks: Number(qMaxMarks) || 5,
       courseOutcomeId: qCoId || currentCourseOutcomes[0]?.id || '',
       bloomsLevel: qBlooms,
@@ -309,6 +402,8 @@ export const AssessmentQuestionsView: React.FC = () => {
     const nextNum = match ? parseInt(match[0], 10) + 1 : currentPaperQuestions.length + 2;
     setQNumber(`Q${nextNum}`);
     setQContent('');
+    setQImageUrl('');
+    setQImageCaption('');
   };
 
   // Handle Save Current Blueprint as Template (Preserving and Restoring Question-Wise COs)
@@ -644,66 +739,96 @@ export const AssessmentQuestionsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick Actions: Save Template, Apply Template, Bulk Upload */}
-            {canManageCourse ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setShowBulkUpload(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-                  title="Bulk Upload Questions via CSV"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-teal-400" />
-                  <span>Bulk Upload</span>
-                </button>
+            {/* Quick Actions: Preview, Print, Download PDF, Save Template, Apply Template, Bulk Upload */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowExamPaperPreview(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-teal-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors shadow-sm"
+                title="Preview Official University Examination Paper"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Preview Paper</span>
+              </button>
 
-                <button
-                  onClick={() => setModalType('applyTemplate')}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Apply Template</span>
-                </button>
+              <button
+                onClick={handlePrintPaper}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors shadow-sm"
+                title="Print Official Examination Paper (isolated PDF output)"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Paper</span>
+              </button>
 
-                <button
-                  onClick={() => {
-                    showMsg('✓ Question paper blueprint and question-wise CO allocations safely saved to institution database!');
-                  }}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-950/40 transition-all active:scale-95"
-                  title="Explicitly save blueprint and question allocations to database"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>Save Blueprint</span>
-                </button>
+              <button
+                onClick={handleDownloadPaperPdf}
+                disabled={isGeneratingPdf}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors shadow-sm disabled:opacity-50"
+                title="Export High-Resolution Vector PDF Document"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{isGeneratingPdf ? 'Generating...' : 'Download PDF'}</span>
+              </button>
 
-                <button
-                  onClick={() => {
-                    setNewTemplateName(`${activeQuestionPaper?.title || 'Course'} Blueprint Template`);
-                    setModalType('saveAsTemplate');
-                  }}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
-                  title="Save current sections and questions as a reusable blueprint template"
-                >
-                  <Layers className="w-3.5 h-3.5" />
-                  <span>Save as Template</span>
-                </button>
+              {canManageCourse ? (
+                <>
+                  <button
+                    onClick={() => setShowBulkUpload(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                    title="Bulk Upload Questions via CSV"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-teal-400" />
+                    <span>Bulk Upload</span>
+                  </button>
 
-                <button
-                  onClick={() => setShowInlineAddSection(!showInlineAddSection)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{showInlineAddSection ? 'Cancel Section' : '+ New Section'}</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-amber-400">
-                <ShieldCheck className="w-4 h-4 shrink-0" />
-                <span>Blueprint Governed by Course Coordinator</span>
-              </div>
-            )}
+                  <button
+                    onClick={() => setModalType('applyTemplate')}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Apply Template</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      showMsg('✓ Question paper blueprint and question-wise CO allocations safely saved to institution database!');
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-950/40 transition-all active:scale-95"
+                    title="Explicitly save blueprint and question allocations to database"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save Blueprint</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setNewTemplateName(`${activeQuestionPaper?.title || 'Course'} Blueprint Template`);
+                      setModalType('saveAsTemplate');
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                    title="Save current sections and questions as a reusable blueprint template"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Save as Template</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowInlineAddSection(!showInlineAddSection)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{showInlineAddSection ? 'Cancel Section' : '+ New Section'}</span>
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-amber-400">
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
+                  <span>Blueprint Governed by Course Coordinator</span>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Paper Summary Pill Bar */}
+          {/* Paper Summary Pill Bar & View Layout Toggle */}
           {activeQuestionPaper && (
             <div className="bg-slate-950 border border-slate-800/80 rounded-2xl px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-3">
@@ -721,12 +846,40 @@ export const AssessmentQuestionsView: React.FC = () => {
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 text-slate-400 text-[11px]">
-                <span>{currentPaperSections.length} Sections</span>
-                <span>&bull;</span>
-                <span>{currentPaperQuestions.length} Questions</span>
-                <span>&bull;</span>
-                <span className="text-emerald-400 font-medium">Auto-saved to Course</span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-slate-400 text-[11px] hidden sm:flex">
+                  <span>{currentPaperSections.length} Sections</span>
+                  <span>&bull;</span>
+                  <span>{currentPaperQuestions.length} Questions</span>
+                </div>
+
+                {/* View Layout Toggle: Visual Cards vs Rapid Table */}
+                <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl p-0.5 text-xs">
+                  <button
+                    onClick={() => setViewLayout('cards')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors font-semibold text-xs ${
+                      viewLayout === 'cards'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Visual view: Visually see Parts questions and Optional Choice dividers"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Visual Cards</span>
+                  </button>
+                  <button
+                    onClick={() => setViewLayout('table')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors font-semibold text-xs ${
+                      viewLayout === 'table'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Table view: Rapid inline CO and Bloom's selection"
+                  >
+                    <TableIcon className="w-3.5 h-3.5" />
+                    <span>Quick Table</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1003,42 +1156,20 @@ export const AssessmentQuestionsView: React.FC = () => {
                             )}
                           </div>
 
-                          {/* Optional Question Text & Formula Toolbar */}
+                          {/* Rich Question Text, LaTeX Formula Toolbar & Diagram Upload */}
                           <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-slate-400 font-semibold text-[11px]">
-                                Question Statement / Formula (Optional):
-                              </label>
-                              <div className="flex items-center gap-1 text-[10px]">
-                                <button
-                                  type="button"
-                                  onClick={() => insertFormatting('\\int_0^\\infty f(x)dx')}
-                                  className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700"
-                                >
-                                  &int; Integral
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => insertFormatting('\\sum_{i=1}^n x_i')}
-                                  className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700"
-                                >
-                                  &Sigma; Sum
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => insertFormatting('\\frac{a}{b}')}
-                                  className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700"
-                                >
-                                  &frac12; Fraction
-                                </button>
-                              </div>
-                            </div>
-                            <textarea
-                              rows={2}
+                            <label className="text-slate-300 font-semibold text-xs block mb-1.5">
+                              Question Statement, LaTeX Equations & Diagrams:
+                            </label>
+                            <RichQuestionEditor
                               value={qContent}
-                              onChange={(e) => setQContent(e.target.value)}
-                              placeholder="Type question text or leave blank if building structure only..."
-                              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white focus:border-indigo-500 focus:outline-none text-xs"
+                              onChange={setQContent}
+                              imageUrl={qImageUrl}
+                              onImageUrlChange={setQImageUrl}
+                              imageCaption={qImageCaption}
+                              onImageCaptionChange={setQImageCaption}
+                              placeholder="Type question statement. Use $formula$ for inline math, $$formula$$ for display math, or use the equation toolbar above..."
+                              minHeight="120px"
                             />
                           </div>
 
@@ -1061,12 +1192,136 @@ export const AssessmentQuestionsView: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Questions Table with Direct Dropdowns for CO and Bloom's Level */}
+                    {/* Questions Display (Visual Cards OR Rapid Table) */}
                     {sectionQuestions.length === 0 ? (
                       <div className="p-8 text-center text-slate-500 text-xs">
                         No questions in this section yet. Click "+ Add Question" above to insert.
                       </div>
+                    ) : viewLayout === 'cards' ? (
+                      /* VISUAL CARDS VIEW: Sub-Parts & Optional Choice Dividers */
+                      <div className="p-4 space-y-3">
+                        {sectionQuestions.map((q, qIdx) => {
+                          const prevQ = qIdx > 0 ? sectionQuestions[qIdx - 1] : null;
+                          const isSecondOptionInChoice =
+                            q.isOption &&
+                            prevQ &&
+                            prevQ.isOption &&
+                            (prevQ.optionGroup === q.optionGroup ||
+                              q.optionLabel?.toLowerCase().includes('b') ||
+                              prevQ.optionLabel?.toLowerCase().includes('a'));
+
+                          const isSubPart = Boolean(
+                            q.partLabel ||
+                              (q.questionNumber.includes('(') && q.questionNumber.includes(')'))
+                          );
+                          const matchedCo = currentCourseOutcomes.find((c) => c.id === q.courseOutcomeId);
+
+                          return (
+                            <React.Fragment key={q.id}>
+                              {/* Prominent Visual '— OR —' Choice Divider for Optional Questions */}
+                              {isSecondOptionInChoice && (
+                                <div className="flex items-center my-3 px-2">
+                                  <div className="flex-1 border-t-2 border-dashed border-amber-500/40" />
+                                  <div className="mx-3 px-4 py-1 rounded-full bg-amber-950/90 border border-amber-600 text-amber-300 font-extrabold text-[11px] tracking-widest shadow-lg flex items-center gap-1.5">
+                                    <Split className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>— OR — (ALTERNATIVE QUESTION CHOICE)</span>
+                                  </div>
+                                  <div className="flex-1 border-t-2 border-dashed border-amber-500/40" />
+                                </div>
+                              )}
+
+                              {/* Question Item Card */}
+                              <div
+                                className={`rounded-2xl border transition-all ${
+                                  isSubPart
+                                    ? 'ml-4 sm:ml-8 bg-slate-950/70 border-indigo-900/50 hover:border-indigo-700/60'
+                                    : q.isOption
+                                    ? 'bg-slate-900/80 border-amber-900/50 hover:border-amber-700/60'
+                                    : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                                } p-4 space-y-3 shadow-md`}
+                              >
+                                {/* Header / Tagging Bar */}
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono font-bold text-white text-xs bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                                      {q.questionNumber}
+                                    </span>
+
+                                    {isSubPart && (
+                                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-300">
+                                        Sub-Part ({q.partLabel || q.questionNumber.split('(')[1]?.replace(')', '') || 'Part'})
+                                      </span>
+                                    )}
+
+                                    {q.isOption && (
+                                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-300 flex items-center gap-1">
+                                        <Split className="w-3 h-3 text-amber-400" />
+                                        <span>{q.optionLabel || 'Choice Option'}</span>
+                                        {q.optionGroup && <span className="opacity-70 font-mono">({q.optionGroup})</span>}
+                                      </span>
+                                    )}
+
+                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-teal-950 border border-teal-800 text-teal-300 font-mono">
+                                      {q.maxMarks} Marks
+                                    </span>
+
+                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-950 border border-indigo-800 text-indigo-300 font-mono">
+                                      {matchedCo?.code || 'Course Outcome'}
+                                    </span>
+
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                                      {q.bloomsLevel}
+                                    </span>
+                                  </div>
+
+                                  {canManageCourse && (
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        onClick={() => openEditQuestionModal(q)}
+                                        className="px-2 py-1 rounded-lg text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors flex items-center gap-1 text-[11px] font-medium"
+                                        title="Edit Question Statement, LaTeX Formulas & Diagrams"
+                                      >
+                                        <Edit2 className="w-3 h-3 text-indigo-400" />
+                                        <span>Edit / Math</span>
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          if (confirm(`Delete ${q.questionNumber}?`)) {
+                                            deleteQuestion(q.id);
+                                            showMsg(`Deleted ${q.questionNumber}.`);
+                                          }
+                                        }}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                                        title="Delete Question"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Rendered Question Statement with KaTeX & Diagrams */}
+                                <div className="text-xs text-slate-200 leading-relaxed pl-0.5">
+                                  {q.content || q.imageUrl ? (
+                                    <LatexRenderer
+                                      content={q.content || ''}
+                                      imageUrl={q.imageUrl}
+                                      imageCaption={q.imageCaption}
+                                      className="space-y-2"
+                                    />
+                                  ) : (
+                                    <span className="text-slate-500 italic text-xs">
+                                      (Blueprint placeholder: No statement text. Mapped directly for marks &amp; CO calculation.)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
                     ) : (
+                      /* RAPID TABLE VIEW: Bulk CO & Bloom Dropdowns */
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
@@ -1076,7 +1331,7 @@ export const AssessmentQuestionsView: React.FC = () => {
                               <th className="px-4 py-2.5 w-24 text-center">Marks</th>
                               <th className="px-4 py-2.5 w-28 text-center">{canManageCourse ? 'CO (Dropdown)' : 'CO'}</th>
                               <th className="px-4 py-2.5 w-36 text-center">{canManageCourse ? "Bloom's (Dropdown)" : "Bloom's"}</th>
-                              {canManageCourse && <th className="px-4 py-2.5 w-16 text-right">Delete</th>}
+                              {canManageCourse && <th className="px-4 py-2.5 w-24 text-right">Actions</th>}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800/60 text-slate-300">
@@ -1107,7 +1362,7 @@ export const AssessmentQuestionsView: React.FC = () => {
                                     )}
                                   </td>
 
-                                  {/* Marks (Inline editable if canManageCourse) */}
+                                  {/* Marks */}
                                   <td className="px-4 py-2.5 text-center">
                                     {canManageCourse ? (
                                       <input
@@ -1125,7 +1380,7 @@ export const AssessmentQuestionsView: React.FC = () => {
                                     )}
                                   </td>
 
-                                  {/* Course Outcome (Direct Dropdown if canManageCourse) */}
+                                  {/* Course Outcome */}
                                   <td className="px-4 py-2.5 text-center">
                                     {canManageCourse ? (
                                       <select
@@ -1154,7 +1409,7 @@ export const AssessmentQuestionsView: React.FC = () => {
                                     )}
                                   </td>
 
-                                  {/* Bloom's Level (Direct Dropdown if canManageCourse) */}
+                                  {/* Bloom's Level */}
                                   <td className="px-4 py-2.5 text-center">
                                     {canManageCourse ? (
                                       <select
@@ -1180,21 +1435,30 @@ export const AssessmentQuestionsView: React.FC = () => {
                                     )}
                                   </td>
 
-                                  {/* Delete (only if canManageCourse) */}
+                                  {/* Actions */}
                                   {canManageCourse && (
                                     <td className="px-4 py-2.5 text-right">
-                                      <button
-                                        onClick={() => {
-                                          if (confirm(`Delete ${q.questionNumber}?`)) {
-                                            deleteQuestion(q.id);
-                                            showMsg(`Deleted ${q.questionNumber}.`);
-                                          }
-                                        }}
-                                        className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                                        title="Delete Question"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
+                                      <div className="flex items-center justify-end gap-1">
+                                        <button
+                                          onClick={() => openEditQuestionModal(q)}
+                                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                          title="Edit Question Statement & LaTeX"
+                                        >
+                                          <Edit2 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (confirm(`Delete ${q.questionNumber}?`)) {
+                                              deleteQuestion(q.id);
+                                              showMsg(`Deleted ${q.questionNumber}.`);
+                                            }
+                                          }}
+                                          className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                                          title="Delete Question"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
                                     </td>
                                   )}
                                 </tr>
@@ -1800,6 +2064,367 @@ export const AssessmentQuestionsView: React.FC = () => {
               >
                 Apply Selected Template
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT QUESTION MODAL (Rich LaTeX Formula & Diagram Editing) */}
+      {editingQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-indigo-400" />
+                <h3 className="font-bold text-white text-sm">
+                  Edit Question {editingQuestion.questionNumber}
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingQuestion(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedQuestion} className="p-5 overflow-y-auto space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+                <div className="sm:col-span-1">
+                  <label className="font-semibold text-slate-300 block mb-1">Q. No *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editQNumber}
+                    onChange={(e) => setEditQNumber(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white font-mono font-bold"
+                  />
+                </div>
+
+                <div className="sm:col-span-1">
+                  <label className="font-semibold text-slate-300 block mb-1">Marks *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={editQMaxMarks}
+                    onChange={(e) => setEditQMaxMarks(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white font-mono font-bold text-center text-teal-300"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="font-semibold text-slate-300 block mb-1">Course Outcome (CO) *</label>
+                  <select
+                    value={editQCoId}
+                    onChange={(e) => setEditQCoId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-indigo-300 font-mono font-bold"
+                  >
+                    {currentCourseOutcomes.map((co) => (
+                      <option key={co.id} value={co.id}>
+                        {co.code} - {co.statement?.slice(0, 30)}...
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="font-semibold text-slate-300 block mb-1">Bloom&apos;s Taxonomy *</label>
+                  <select
+                    value={editQBlooms}
+                    onChange={(e) => setEditQBlooms(e.target.value as BloomsTaxonomyLevel)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white font-semibold"
+                  >
+                    <option value="REMEMBER">L1 - Remember</option>
+                    <option value="UNDERSTAND">L2 - Understand</option>
+                    <option value="APPLY">L3 - Apply</option>
+                    <option value="ANALYZE">L4 - Analyze</option>
+                    <option value="EVALUATE">L5 - Evaluate</option>
+                    <option value="CREATE">L6 - Create</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Toggles: Sub-Part and Optional Choice */}
+              <div className="flex flex-wrap items-center gap-4 p-3 bg-slate-950 rounded-xl border border-slate-800">
+                <label className="flex items-center gap-1.5 cursor-pointer text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={editQIsPart}
+                    onChange={(e) => setEditQIsPart(e.target.checked)}
+                    className="rounded bg-slate-900 border-slate-700 text-indigo-600"
+                  />
+                  <span>Has Sub-Part (e.g. Q1.a)</span>
+                </label>
+                {editQIsPart && (
+                  <input
+                    type="text"
+                    value={editQPartLabel}
+                    onChange={(e) => setEditQPartLabel(e.target.value)}
+                    placeholder="Part: a, b"
+                    className="w-20 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs font-mono"
+                  />
+                )}
+
+                <label className="flex items-center gap-1.5 cursor-pointer text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={editQIsOption}
+                    onChange={(e) => setEditQIsOption(e.target.checked)}
+                    className="rounded bg-slate-900 border-slate-700 text-indigo-600"
+                  />
+                  <span>Optional Choice (— OR —)</span>
+                </label>
+                {editQIsOption && (
+                  <>
+                    <input
+                      type="text"
+                      value={editQOptionLabel}
+                      onChange={(e) => setEditQOptionLabel(e.target.value)}
+                      placeholder="Option A / Option B"
+                      className="w-28 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs font-mono"
+                    />
+                    <input
+                      type="text"
+                      value={editQOptionGroup}
+                      onChange={(e) => setEditQOptionGroup(e.target.value)}
+                      placeholder="Group: OPT_1"
+                      className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs font-mono"
+                    />
+                  </>
+                )}
+              </div>
+
+              {/* Rich Question Editor */}
+              <div>
+                <label className="text-slate-300 font-semibold text-xs block mb-1.5">
+                  Question Statement, LaTeX Equations & Diagrams:
+                </label>
+                <RichQuestionEditor
+                  value={editQContent}
+                  onChange={setEditQContent}
+                  imageUrl={editQImageUrl}
+                  onImageUrlChange={setEditQImageUrl}
+                  imageCaption={editQImageCaption}
+                  onImageCaptionChange={setEditQImageCaption}
+                  placeholder="Enter detailed question statement. Supports $formula$ for inline LaTeX, $$formula$$ for block math, and diagrams..."
+                  minHeight="140px"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingQuestion(null)}
+                  className="px-4 py-2 text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-sm"
+                >
+                  Save Question Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* OFFICIAL UNIVERSITY EXAMINATION PAPER PREVIEW & PRINT MODAL */}
+      {showExamPaperPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl h-[94vh] flex flex-col overflow-hidden shadow-2xl">
+            {/* Modal Toolbar */}
+            <div className="bg-slate-950 p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                  <Printer className="w-4 h-4 text-teal-400" />
+                  <span>Official University Examination Paper Preview</span>
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Formatted strictly for NBA/NAAC audits, institutional examinations, and PDF print archiving.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrintPaper}
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+                  title="Open Print Dialog"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Paper</span>
+                </button>
+
+                <button
+                  onClick={handleDownloadPaperPdf}
+                  disabled={isGeneratingPdf}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50"
+                  title="Generate Vector PDF"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isGeneratingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowExamPaperPreview(false)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 ml-2"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Document Container */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-950/60">
+              {/* THE OFFICIAL PRINTABLE QUESTION PAPER (White Paper Style) */}
+              <div
+                id="official-exam-paper-container"
+                className="bg-white text-slate-900 p-8 sm:p-12 max-w-4xl mx-auto rounded-xl shadow-xl font-serif space-y-6 border border-slate-200"
+              >
+                {/* Official University Header */}
+                <div className="text-center space-y-1.5 border-b-2 border-slate-900 pb-4">
+                  <h1 className="text-lg sm:text-xl font-bold uppercase tracking-wider text-slate-950">
+                    {tenant?.name || 'Central University of Technology'}
+                  </h1>
+                  <h2 className="text-xs sm:text-sm font-semibold uppercase tracking-wide text-slate-700">
+                    Faculty of Engineering &bull; Course: {activeCourse ? `${activeCourse.code} - ${activeCourse.title}` : 'Engineering & Technology'}
+                  </h2>
+                  <div className="text-xs font-bold uppercase text-slate-800 pt-1">
+                    {activeQuestionPaper?.title || 'Continuous Internal Assessment Examination'} &bull; Academic Year 2025-26
+                  </div>
+                </div>
+
+                {/* Course & Exam Meta Details Table */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs border border-slate-300 p-3 bg-slate-50 rounded">
+                  <div>
+                    <span className="font-bold text-slate-600 block text-[10px] uppercase">Course Code</span>
+                    <span className="font-mono font-bold text-slate-900">{activeCourse?.code}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-600 block text-[10px] uppercase">Course Name</span>
+                    <span className="font-semibold text-slate-900 truncate block">{activeCourse?.title}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-600 block text-[10px] uppercase">Max Marks</span>
+                    <span className="font-bold text-slate-900">{activeQuestionPaper?.totalMarks || totalAllocatedMarks} Marks</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-600 block text-[10px] uppercase">Duration</span>
+                    <span className="font-semibold text-slate-900">3 Hours</span>
+                  </div>
+                </div>
+
+                {/* Candidate Instructions */}
+                <div className="border border-slate-300 p-3 text-[11px] bg-slate-50/50 rounded space-y-1">
+                  <div className="font-bold uppercase tracking-wider text-[10px] text-slate-700">
+                    General Instructions to Candidates:
+                  </div>
+                  <ol className="list-decimal pl-4 space-y-0.5 text-slate-700 leading-normal">
+                    <li>Read each question carefully and answer according to the section instructions.</li>
+                    <li>Where internal choice is indicated with <strong>[— OR —]</strong>, answer either Option A or Option B.</li>
+                    <li>Mathematical equations, symbols, and formulas follow standard scientific conventions.</li>
+                    <li>Assume suitable missing data if any, and state assumptions explicitly.</li>
+                  </ol>
+                </div>
+
+                {/* Sections and Questions */}
+                <div className="space-y-6 pt-2">
+                  {currentPaperSections.map((sec, secIdx) => {
+                    const secQuestions = currentPaperQuestions.filter((q) => q.sectionId === sec.id);
+                    return (
+                      <div key={sec.id} className="space-y-4">
+                        {/* Section Header */}
+                        <div className="text-center border-b border-slate-400 pb-1.5">
+                          <h3 className="font-bold uppercase tracking-wide text-xs text-slate-950">
+                            {sec.sectionName}
+                          </h3>
+                          <div className="text-[11px] text-slate-700 italic">
+                            {sec.choiceRule === 'ALL'
+                              ? `(Answer ALL questions in this section)`
+                              : `(Answer ANY ${sec.questionsToAnswer} of ${sec.totalQuestions} questions)`}
+                            {sec.instructions && <span> &bull; {sec.instructions}</span>}
+                          </div>
+                        </div>
+
+                        {/* Questions inside Section */}
+                        <div className="space-y-3">
+                          {secQuestions.map((q, qIndex) => {
+                            const prevQ = qIndex > 0 ? secQuestions[qIndex - 1] : null;
+                            const isChoiceSecond =
+                              q.isOption &&
+                              prevQ &&
+                              prevQ.isOption &&
+                              (prevQ.optionGroup === q.optionGroup ||
+                                q.optionLabel?.toLowerCase().includes('b') ||
+                                prevQ.optionLabel?.toLowerCase().includes('a'));
+
+                            const matchedCo = currentCourseOutcomes.find((c) => c.id === q.courseOutcomeId);
+
+                            return (
+                              <React.Fragment key={q.id}>
+                                {isChoiceSecond && (
+                                  <div className="text-center font-bold text-xs tracking-widest text-slate-800 my-2 py-1 bg-slate-100 border-y border-dashed border-slate-300">
+                                    — OR —
+                                  </div>
+                                )}
+
+                                <div className="flex items-start justify-between gap-4 text-xs leading-relaxed">
+                                  <div className="flex items-start gap-2 flex-1">
+                                    <span className="font-bold font-mono text-slate-950 shrink-0">
+                                      {q.questionNumber}.
+                                    </span>
+                                    <div className="flex-1 space-y-1">
+                                      {q.content ? (
+                                        <LatexRenderer
+                                          content={q.content}
+                                          imageUrl={q.imageUrl}
+                                          imageCaption={q.imageCaption}
+                                          className="text-slate-900 font-serif"
+                                        />
+                                      ) : (
+                                        <span className="italic text-slate-500">
+                                          [Question statement pending entry]
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Right-aligned Marks and Attainment Tags */}
+                                  <div className="text-right shrink-0 whitespace-nowrap pl-2">
+                                    <span className="font-bold text-slate-900">[{q.maxMarks}M]</span>
+                                    <span className="block text-[10px] text-slate-600 font-sans">
+                                      [{matchedCo?.code || 'CO'}, {q.bloomsLevel}]
+                                    </span>
+                                  </div>
+                                </div>
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Document Sign-Off Footer */}
+                <div className="pt-8 border-t-2 border-slate-900 grid grid-cols-3 gap-4 text-center text-[11px] text-slate-700">
+                  <div>
+                    <div className="h-8"></div>
+                    <div className="border-t border-slate-400 pt-1 font-semibold">Course Instructor</div>
+                  </div>
+                  <div>
+                    <div className="h-8"></div>
+                    <div className="border-t border-slate-400 pt-1 font-semibold">Course Coordinator</div>
+                  </div>
+                  <div>
+                    <div className="h-8"></div>
+                    <div className="border-t border-slate-400 pt-1 font-semibold">Head of Department</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

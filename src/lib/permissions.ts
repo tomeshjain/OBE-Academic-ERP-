@@ -1,5 +1,7 @@
 import {
   UserAccount,
+  UserRole,
+  MenuItemId,
   AcademicFaculty,
   AcademicSchool,
   AcademicDepartment,
@@ -7,6 +9,144 @@ import {
   CourseRecord,
   CourseSection,
 } from '@/types/erp';
+
+export const ROLE_HIERARCHY_LEVEL: Record<UserRole, number> = {
+  SUPER_ADMIN: 100,
+  TENANT_ADMIN: 90,
+  DEAN: 80,
+  HEAD_OF_FACULTY: 80,
+  HEAD_OF_SCHOOL: 70,
+  HOD: 60,
+  COURSE_COORDINATOR: 50,
+  COURSE_FACULTY: 40,
+  STUDENT: 10,
+};
+
+/**
+ * Returns the exact roles a user can assign when creating new accounts.
+ * HoF/HoS/HoD can only select roles strictly below their own role.
+ */
+export function getAssignableRoles(creatorRole?: UserRole | null): UserRole[] {
+  if (!creatorRole) return [];
+  if (creatorRole === 'SUPER_ADMIN' || creatorRole === 'TENANT_ADMIN') {
+    return [
+      'HEAD_OF_FACULTY',
+      'HEAD_OF_SCHOOL',
+      'HOD',
+      'COURSE_COORDINATOR',
+      'COURSE_FACULTY',
+      'STUDENT',
+    ];
+  }
+  if (creatorRole === 'HEAD_OF_FACULTY' || creatorRole === 'DEAN') {
+    return [
+      'HEAD_OF_SCHOOL',
+      'HOD',
+      'COURSE_COORDINATOR',
+      'COURSE_FACULTY',
+      'STUDENT',
+    ];
+  }
+  if (creatorRole === 'HEAD_OF_SCHOOL') {
+    return [
+      'HOD',
+      'COURSE_COORDINATOR',
+      'COURSE_FACULTY',
+      'STUDENT',
+    ];
+  }
+  if (creatorRole === 'HOD') {
+    return [
+      'COURSE_COORDINATOR',
+      'COURSE_FACULTY',
+      'STUDENT',
+    ];
+  }
+  return [];
+}
+
+/**
+ * Determines whether the creator requires Admin approval for accounts they create.
+ */
+export function requiresAdminApproval(creatorRole?: UserRole | null): boolean {
+  if (!creatorRole) return true;
+  return creatorRole !== 'TENANT_ADMIN' && creatorRole !== 'SUPER_ADMIN';
+}
+
+/**
+ * Determines whether the user has administrator approval authority.
+ */
+export function canApproveUserAccount(currentUser?: UserAccount | null): boolean {
+  if (!currentUser) return false;
+  return currentUser.role === 'TENANT_ADMIN' || currentUser.role === 'SUPER_ADMIN';
+}
+
+/**
+ * Filters the 9 Menu Items based on academic role hierarchy to ensure a clean, uncluttered interface.
+ */
+export function getVisibleMenuItemsForRole(role?: UserRole | null): MenuItemId[] {
+  if (!role) return ['courses', 'mark-entry', 'co-reports'];
+
+  switch (role) {
+    case 'SUPER_ADMIN':
+    case 'TENANT_ADMIN':
+      return [
+        'org-structure',
+        'regulations',
+        'programs-outcomes',
+        'terms',
+        'courses',
+        'scoring-components',
+        'assessment-papers',
+        'mark-entry',
+        'co-reports',
+      ];
+    case 'HEAD_OF_FACULTY':
+      return [
+        'org-structure',
+        'programs-outcomes',
+        'terms',
+        'courses',
+        'scoring-components',
+        'assessment-papers',
+        'mark-entry',
+        'co-reports',
+      ];
+    case 'HEAD_OF_SCHOOL':
+    case 'HOD':
+      return [
+        'org-structure',
+        'programs-outcomes',
+        'courses',
+        'scoring-components',
+        'assessment-papers',
+        'mark-entry',
+        'co-reports',
+      ];
+    case 'COURSE_COORDINATOR':
+      return [
+        'courses',
+        'scoring-components',
+        'assessment-papers',
+        'mark-entry',
+        'co-reports',
+      ];
+    case 'COURSE_FACULTY':
+      return [
+        'courses',
+        'assessment-papers',
+        'mark-entry',
+        'co-reports',
+      ];
+    case 'STUDENT':
+      return [
+        'mark-entry',
+        'co-reports',
+      ];
+    default:
+      return ['courses', 'mark-entry', 'co-reports'];
+  }
+}
 
 export interface AcademicRoleScope {
   // Role checks
@@ -43,6 +183,12 @@ export interface AcademicRoleScope {
   canEditMarksForSection: (sectionId?: string | null, isWindowLocked?: boolean) => boolean;
   canUnlockOrExtendDeadline: boolean;
   canViewReportsForSection: (sectionId?: string | null) => boolean;
+
+  // User Management & Approval Permissions
+  canCreateUser: boolean;
+  canApproveUser: boolean;
+  assignableRoles: UserRole[];
+  allowedMenuItems: MenuItemId[];
 }
 
 /**
@@ -86,6 +232,10 @@ export function computeAcademicScope(
       canEditMarksForSection: () => false,
       canUnlockOrExtendDeadline: false,
       canViewReportsForSection: () => false,
+      canCreateUser: false,
+      canApproveUser: false,
+      assignableRoles: [],
+      allowedMenuItems: ['courses', 'mark-entry', 'co-reports'],
     };
   }
 
@@ -278,5 +428,9 @@ export function computeAcademicScope(
     canEditMarksForSection,
     canUnlockOrExtendDeadline,
     canViewReportsForSection,
+    canCreateUser: isAdmin || isHeadOfFaculty || isHeadOfSchool || isHod,
+    canApproveUser: isAdmin,
+    assignableRoles: getAssignableRoles(currentUser.role),
+    allowedMenuItems: getVisibleMenuItemsForRole(currentUser.role),
   };
 }

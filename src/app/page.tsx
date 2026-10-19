@@ -68,6 +68,16 @@ function DashboardShell() {
     }
   }, [visibleCourses, activeCourseId, setActiveCourseId]);
 
+  React.useEffect(() => {
+    if (
+      academicScope?.allowedMenuItems &&
+      academicScope.allowedMenuItems.length > 0 &&
+      !academicScope.allowedMenuItems.includes(activeMenuItem)
+    ) {
+      setActiveMenuItem(academicScope.allowedMenuItems[0]);
+    }
+  }, [academicScope?.allowedMenuItems, activeMenuItem, setActiveMenuItem]);
+
   // Authentication Portal (Enforces: initial setup is only available on login portal if system is completely empty)
   if (!currentUser) {
     return <LoginPortal />;

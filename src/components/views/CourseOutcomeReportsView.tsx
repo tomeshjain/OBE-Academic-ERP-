@@ -20,7 +20,9 @@ import {
   Building,
   GraduationCap,
   Layers,
+  Download,
 } from 'lucide-react';
+import { printElement, downloadPdfFromElement } from '@/lib/pdf-print-utils';
 
 export const CourseOutcomeReportsView: React.FC = () => {
   const {
@@ -62,12 +64,34 @@ export const CourseOutcomeReportsView: React.FC = () => {
   };
   const [selectedPo, setSelectedPo] = useState<PoAttainmentResult | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   // Local config form state
   const [targetCutoffPct, setTargetCutoffPct] = useState(config.targetCutoffPct);
   const [directWeight, setDirectWeight] = useState(config.directWeight);
   const [indirectWeight, setIndirectWeight] = useState(config.indirectWeight);
   const [defaultTargetLevel, setDefaultTargetLevel] = useState(config.defaultTargetLevel);
+
+  const handlePrintReport = () => {
+    printElement(
+      'printable-attainment-report',
+      `OBE_Attainment_Dossier_${activeCourse?.code || 'Course'}_${activeSubTab.toUpperCase()}`
+    );
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsExportingPdf(true);
+      await downloadPdfFromElement(
+        'printable-attainment-report',
+        `OBE_Attainment_Dossier_${activeCourse?.code || 'Course'}_${activeSubTab.toUpperCase()}.pdf`
+      );
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   const displayedCourses = academicScope.visibleCourses;
   const activeCourse = useMemo(() => {
@@ -277,7 +301,26 @@ export const CourseOutcomeReportsView: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handlePrintReport}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+              title="Print Attainment Dossier (isolated output)"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Dossier</span>
+            </button>
+
+            <button
+              onClick={handleDownloadPdf}
+              disabled={isExportingPdf}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+              title="Download Vector PDF Report"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{isExportingPdf ? 'Generating...' : 'Download PDF'}</span>
+            </button>
+
             <button
               onClick={() => setShowConfigModal(true)}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium transition-colors"
@@ -428,7 +471,18 @@ export const CourseOutcomeReportsView: React.FC = () => {
           </p>
         </div>
       ) : (
-        <>
+        <div id="printable-attainment-report" className="space-y-6">
+          {/* Printable Official Header for Attainment Dossier */}
+          <div className="hidden print:block p-6 border-b-2 border-slate-900 mb-4 text-center bg-white text-slate-950 font-serif">
+            <h1 className="text-xl font-bold uppercase tracking-wider">{tenant?.name || 'CENTRAL UNIVERSITY'}</h1>
+            <h2 className="text-sm font-semibold uppercase text-slate-700 mt-1">
+              {activeCourse?.code} - {activeCourse?.title} OBE Attainment Dossier
+            </h2>
+            <div className="text-xs text-slate-600 mt-1">
+              Program: {activeProgram?.name} &bull; Scope: {activeSection?.name || (selectedSectionId === 'ALL' ? 'Course-wide Aggregate' : 'Section')} &bull; AY 2026-27
+            </div>
+          </div>
+
           {/* SUB-TAB 1: CO ATTAINMENT ANALYSIS */}
           {activeSubTab === 'co' && (
             <div className="space-y-6">
@@ -931,7 +985,7 @@ export const CourseOutcomeReportsView: React.FC = () => {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* CONFIGURATION RULES MODAL */}

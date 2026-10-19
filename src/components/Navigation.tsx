@@ -161,7 +161,12 @@ export const Navigation: React.FC<NavigationProps> = () => {
     activeMenuItem,
     activeSubTab,
     navigateTo,
+    academicScope,
   } = useApp();
+
+  const visibleMenuItems = MENU_ITEMS.filter((item) =>
+    academicScope?.allowedMenuItems ? academicScope.allowedMenuItems.includes(item.id) : true
+  );
 
   return (
     <aside className="w-72 bg-slate-950 border-r border-slate-800 flex flex-col h-screen sticky top-0 shrink-0 select-none z-30">
@@ -187,9 +192,9 @@ export const Navigation: React.FC<NavigationProps> = () => {
         </div>
       </div>
 
-      {/* Strict 9 Menu Items List */}
+      {/* Role-Governed Menu Items List */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5 scrollbar-thin scrollbar-thumb-slate-800">
-        {MENU_ITEMS.map((item) => {
+        {visibleMenuItems.map((item) => {
           const isActive = activeMenuItem === item.id;
 
           return (

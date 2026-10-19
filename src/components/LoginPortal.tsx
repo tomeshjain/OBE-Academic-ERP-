@@ -143,6 +143,22 @@ export const LoginPortal: React.FC = () => {
       const foundUser = users.find((u) => u.email.toLowerCase() === sanitizedEmail);
 
       if (foundUser) {
+        if (foundUser.approvalStatus === 'PENDING' || foundUser.status === 'PENDING_APPROVAL') {
+          setErrorMessage(
+            `Account Pending Approval: This account was provisioned by ${foundUser.createdByName || 'Academic Unit Head'} (${foundUser.createdByRole ? foundUser.createdByRole.replace(/_/g, ' ') : 'Leadership'}) and is awaiting Institutional Administrator approval before access is permitted.`
+          );
+          setIsLoading(false);
+          return;
+        }
+
+        if (foundUser.approvalStatus === 'REJECTED') {
+          setErrorMessage(
+            `Account Registration Not Approved: ${foundUser.rejectionReason || 'Account request was declined by institutional administrator.'}`
+          );
+          setIsLoading(false);
+          return;
+        }
+
         if (foundUser.status === 'PENDING_PASSWORD_SETUP' && foundUser.setupOtp) {
           setErrorMessage(
             'This account is pending first-time password setup. Please click "Set Password with OTP" below.'

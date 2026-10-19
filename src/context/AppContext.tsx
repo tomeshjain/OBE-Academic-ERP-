@@ -33,7 +33,7 @@ import {
   EmailSmtpConfig,
   OutgoingEmailNotification,
 } from '@/types/erp';
-import { computeAcademicScope, AcademicRoleScope } from '@/lib/permissions';
+import { computeAcademicScope, AcademicRoleScope, requiresAdminApproval } from '@/lib/permissions';
 export type { AcademicRoleScope } from '@/lib/permissions';
 
 export const DEFAULT_QUESTION_PAPER_TEMPLATES: QuestionPaperTemplate[] = [
@@ -228,6 +228,8 @@ interface AppContextType {
   addUsersBatch: (newUsers: Array<Omit<UserAccount, 'id' | 'createdAt' | 'hasCompletedInitialReset' | 'passwordResetLocked'>>) => void;
   updateUser: (id: string, updates: Partial<UserAccount>) => void;
   deleteUser: (id: string) => void;
+  approveUserAccount: (userId: string) => { success: boolean; message: string; otp?: string; link?: string };
+  rejectUserAccount: (userId: string, reason?: string) => { success: boolean; message: string };
   adminResetUserPassword: (userId: string) => { success: boolean; message: string; otp?: string; link?: string };
   requestForgotPassword: (email: string) => { success: boolean; message: string; isLocked?: boolean; otp?: string };
   verifyOtpAndSetPassword: (email: string, otp: string, newPassword: string) => { success: boolean; message: string };
@@ -907,13 +909,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // 0. User Management, Password Setup, OTP & Reset Policy
   const addUser = (u: Omit<UserAccount, 'id' | 'createdAt' | 'hasCompletedInitialReset' | 'passwordResetLocked'>) => {
+    const isApprovalNeeded = requiresAdminApproval(currentUser?.role);
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const link = `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}?action=set-password&email=${encodeURIComponent(u.email)}&otp=${otp}`;
 
     const newUser: UserAccount = {
       ...u,
       id: `u-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      status: u.status || 'PENDING_PASSWORD_SETUP',
+      status: isApprovalNeeded ? 'PENDING_APPROVAL' : (u.status || 'PENDING_PASSWORD_SETUP'),
+      approvalStatus: isApprovalNeeded ? 'PENDING' : 'APPROVED',
+      createdByUserId: currentUser?.id,
+      createdByRole: currentUser?.role,
+      createdByName: currentUser?.fullName,
       createdAt: new Date().toISOString(),
       setupOtp: otp,
       setupOtpExpiresAt: new Date(Date.now() + 86400000 * 7).toISOString(),
@@ -922,16 +929,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setUsers((prev) => [...prev, newUser]);
 
-    // Dispatch welcome email with OTP, Activation Link, and institutional body
-    sendInstitutionalNotification({
-      recipientEmail: u.email,
-      recipientName: u.fullName,
-      subject: `Welcome to ${tenant?.name || 'Academic ERP'} - Set Your Account Password`,
-      type: 'FIRST_TIME_SETUP',
-      otp,
-      link,
-      body: `Welcome to ${tenant?.name || 'Academic Institution'}. Your institutional account has been provisioned with role: ${u.role}. Please click the activation link and verify your 6-digit OTP code (${otp}) to set your password.`,
-    });
+    if (!isApprovalNeeded) {
+      // Dispatch welcome email with OTP, Activation Link, and institutional body
+      sendInstitutionalNotification({
+        recipientEmail: u.email,
+        recipientName: u.fullName,
+        subject: `Welcome to ${tenant?.name || 'Academic ERP'} - Set Your Account Password`,
+        type: 'FIRST_TIME_SETUP',
+        otp,
+        link,
+        body: `Welcome to ${tenant?.name || 'Academic Institution'}. Your institutional account has been provisioned with role: ${u.role}. Please click the activation link and verify your 6-digit OTP code (${otp}) to set your password.`,
+      });
+    } else {
+      // Notify Admin about the pending request created by academic head
+      if (adminUser?.email) {
+        sendInstitutionalNotification({
+          recipientEmail: adminUser.email,
+          recipientName: adminUser.fullName,
+          subject: `User Account Approval Requested: ${u.fullName} (${u.role})`,
+          type: 'GENERAL_NOTIFICATION',
+          body: `A new user account for ${u.fullName} (${u.email}) with role "${u.role}" has been created by ${currentUser?.fullName} (${currentUser?.role}). It is awaiting your administrator approval in Organization Structure -> Users.`,
+        });
+      }
+    }
 
     return { user: newUser, otp, link };
   };
@@ -939,6 +959,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addUsersBatch = (
     newUsers: Array<Omit<UserAccount, 'id' | 'createdAt' | 'hasCompletedInitialReset' | 'passwordResetLocked'>>
   ) => {
+    const isApprovalNeeded = requiresAdminApproval(currentUser?.role);
     const createdUsers: UserAccount[] = [];
 
     newUsers.forEach((u, idx) => {
@@ -948,7 +969,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const usr: UserAccount = {
         ...u,
         id: `u-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-        status: u.status || 'PENDING_PASSWORD_SETUP',
+        status: isApprovalNeeded ? 'PENDING_APPROVAL' : (u.status || 'PENDING_PASSWORD_SETUP'),
+        approvalStatus: isApprovalNeeded ? 'PENDING' : 'APPROVED',
+        createdByUserId: currentUser?.id,
+        createdByRole: currentUser?.role,
+        createdByName: currentUser?.fullName,
         createdAt: new Date().toISOString(),
         setupOtp: otp,
         setupOtpExpiresAt: new Date(Date.now() + 86400000 * 7).toISOString(),
@@ -957,18 +982,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       createdUsers.push(usr);
 
-      sendInstitutionalNotification({
-        recipientEmail: u.email,
-        recipientName: u.fullName,
-        subject: `Welcome to ${tenant?.name || 'Academic ERP'} - Set Your Account Password`,
-        type: 'FIRST_TIME_SETUP',
-        otp,
-        link,
-        body: `Welcome to ${tenant?.name || 'Academic Institution'}. Your institutional account has been created with role: ${u.role}. Use OTP ${otp} and activation link to set your password.`,
-      });
+      if (!isApprovalNeeded) {
+        sendInstitutionalNotification({
+          recipientEmail: u.email,
+          recipientName: u.fullName,
+          subject: `Welcome to ${tenant?.name || 'Academic ERP'} - Set Your Account Password`,
+          type: 'FIRST_TIME_SETUP',
+          otp,
+          link,
+          body: `Welcome to ${tenant?.name || 'Academic Institution'}. Your institutional account has been created with role: ${u.role}. Use OTP ${otp} and activation link to set your password.`,
+        });
+      }
     });
 
     setUsers((prev) => [...prev, ...createdUsers]);
+  };
+
+  const approveUserAccount = (userId: string) => {
+    const target = users.find((u) => u.id === userId);
+    if (!target) return { success: false, message: 'User not found in system.' };
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const link = `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}?action=set-password&email=${encodeURIComponent(target.email)}&otp=${otp}`;
+
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? {
+              ...u,
+              status: 'PENDING_PASSWORD_SETUP',
+              approvalStatus: 'APPROVED',
+              setupOtp: otp,
+              setupOtpExpiresAt: new Date(Date.now() + 86400000 * 7).toISOString(),
+            }
+          : u
+      )
+    );
+
+    sendInstitutionalNotification({
+      recipientEmail: target.email,
+      recipientName: target.fullName,
+      subject: `Account Approved: Welcome to ${tenant?.name || 'Academic ERP'}`,
+      type: 'FIRST_TIME_SETUP',
+      otp,
+      link,
+      body: `Your institutional user account has been approved by the Administrator. Your assigned role is: ${target.role}. Please click the activation link and verify with OTP (${otp}) to set your password.`,
+    });
+
+    return { success: true, message: `Approved account for ${target.fullName}. Setup email dispatched.`, otp, link };
+  };
+
+  const rejectUserAccount = (userId: string, reason?: string) => {
+    const target = users.find((u) => u.id === userId);
+    if (!target) return { success: false, message: 'User not found in system.' };
+
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? {
+              ...u,
+              status: 'INACTIVE',
+              approvalStatus: 'REJECTED',
+              rejectionReason: reason || 'Not approved by institutional policy',
+            }
+          : u
+      )
+    );
+
+    return { success: true, message: `Account request for ${target.fullName} rejected.` };
   };
 
   const updateUser = (id: string, updates: Partial<UserAccount>) => {
@@ -2249,6 +2330,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addUsersBatch,
         updateUser,
         deleteUser,
+        approveUserAccount,
+        rejectUserAccount,
         adminResetUserPassword,
         requestForgotPassword,
         verifyOtpAndSetPassword,

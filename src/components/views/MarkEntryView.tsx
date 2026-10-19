@@ -34,6 +34,7 @@ import {
   AlertCircle,
   Sparkles,
   ShieldCheck,
+  Printer,
 } from 'lucide-react';
 import {
   downloadStudentRosterTemplate,
@@ -43,9 +44,11 @@ import {
   exportCompletedMarksToExcel,
   parseMarksFromExcel,
 } from '@/lib/excel-utils';
+import { printElement, downloadPdfFromElement } from '@/lib/pdf-print-utils';
 
 export const MarkEntryView: React.FC = () => {
   const {
+    tenant,
     students,
     questions,
     marks,
@@ -498,6 +501,29 @@ export const MarkEntryView: React.FC = () => {
     });
   };
 
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  const handlePrintAwardSheet = () => {
+    printElement(
+      'printable-award-sheet',
+      `Official_Award_Sheet_${activeCourse?.code || 'Course'}_${currentWindow?.subComponentName || 'Marks'}_${activeSection?.name || 'Section'}`
+    );
+  };
+
+  const handleDownloadAwardSheetPdf = async () => {
+    try {
+      setIsGeneratingPdf(true);
+      await downloadPdfFromElement(
+        'printable-award-sheet',
+        `Official_Award_Sheet_${activeCourse?.code || 'Course'}_${currentWindow?.subComponentName || 'Marks'}_${activeSection?.name || 'Section'}.pdf`
+      );
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header Banner - Space Optimized & Integrated */}
@@ -808,6 +834,25 @@ export const MarkEntryView: React.FC = () => {
                 <FileSpreadsheet className="w-3.5 h-3.5 text-teal-400" />
                 <span>Export Marks</span>
               </button>
+
+              <button
+                onClick={handlePrintAwardSheet}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                title="Print Official Examination Mark Award Sheet (isolated output)"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Award Sheet</span>
+              </button>
+
+              <button
+                onClick={handleDownloadAwardSheetPdf}
+                disabled={isGeneratingPdf}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-lg text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+                title="Download Vector PDF Award Sheet"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{isGeneratingPdf ? 'Generating...' : 'Download PDF'}</span>
+              </button>
             </div>
           </div>
 
@@ -879,9 +924,20 @@ export const MarkEntryView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+              <div id="printable-award-sheet" className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl p-0 sm:p-2 space-y-4">
+                {/* Official Print Header */}
+                <div className="hidden print:block p-6 border-b-2 border-slate-900 mb-4 text-center bg-white text-slate-950 font-serif">
+                  <h1 className="text-xl font-bold uppercase tracking-wider">{tenant?.name || 'CENTRAL UNIVERSITY'}</h1>
+                  <h2 className="text-sm font-semibold uppercase text-slate-700 mt-1">
+                    Official Mark Award Sheet &bull; {currentWindow?.subComponentName || 'Examination Marks'}
+                  </h2>
+                  <div className="text-xs text-slate-600 mt-1">
+                    Course: {activeCourse?.code} - {activeCourse?.title} &bull; Section: {activeSection?.name || 'Section A'} &bull; Evaluator: {currentWindow?.facultyName || activeSection?.facultyName || 'Course Faculty'} &bull; Batch 2026
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
                       <th className="px-4 py-3 sticky left-0 bg-slate-950 z-20 w-12 text-center">#</th>
@@ -1031,6 +1087,22 @@ export const MarkEntryView: React.FC = () => {
                     })}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Official Print Signatures */}
+              <div className="hidden print:grid grid-cols-3 gap-6 pt-8 pb-4 text-center text-xs font-serif text-slate-900 border-t border-slate-400 mt-6 bg-white">
+                <div>
+                  <div className="h-10"></div>
+                  <div className="border-t border-slate-400 pt-1 font-semibold">Faculty Evaluator Signature</div>
+                </div>
+                <div>
+                  <div className="h-10"></div>
+                  <div className="border-t border-slate-400 pt-1 font-semibold">Course Coordinator Verification</div>
+                </div>
+                <div>
+                  <div className="h-10"></div>
+                  <div className="border-t border-slate-400 pt-1 font-semibold">Head of Department Seal</div>
+                </div>
               </div>
             </div>
           </div>

@@ -270,6 +270,8 @@ export interface QuestionItem {
   optionGroup?: string; // Grouping identifier (e.g. "OPT_1")
   optionLabel?: string; // e.g. "Option A", "Option B" or "OR"
   content?: string; // Rich Text & KaTeX / LaTeX - OPTIONAL
+  imageUrl?: string; // Diagram / Equation figure URL or Base64 Data URL
+  imageCaption?: string; // Caption for diagram (e.g. "Figure 1: State Diagram")
   maxMarks: number;
   courseOutcomeId: string;
   bloomsLevel: BloomsTaxonomyLevel;
@@ -334,7 +336,12 @@ export interface UserAccount {
   role: UserRole;
   department?: string;
   isMfaEnabled: boolean;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_PASSWORD_SETUP';
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_PASSWORD_SETUP' | 'PENDING_APPROVAL';
+  approvalStatus?: 'APPROVED' | 'PENDING' | 'REJECTED';
+  createdByUserId?: string;
+  createdByRole?: UserRole;
+  createdByName?: string;
+  rejectionReason?: string;
   createdAt: string;
   passwordHash?: string;
   setupOtp?: string;

@@ -69,6 +69,8 @@ export const OrganizationStructureView: React.FC = () => {
     addUsersBatch,
     updateUser,
     deleteUser,
+    approveUserAccount,
+    rejectUserAccount,
     adminResetUserPassword,
     emailConfig,
     updateEmailConfig,
@@ -78,6 +80,7 @@ export const OrganizationStructureView: React.FC = () => {
     activeSubTab,
     setActiveSubTab,
     academicScope,
+    currentUser,
   } = useApp();
 
   const [subTab, setSubTab] = useState<
@@ -144,9 +147,9 @@ export const OrganizationStructureView: React.FC = () => {
   const [previewEmail, setPreviewEmail] = useState<OutgoingEmailNotification | null>(null);
   const [copiedOtp, setCopiedOtp] = useState<string | null>(null);
 
-  const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
-  const showMsg = (text: string, type: 'success' | 'error' = 'success') => {
+  const showMsg = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setNotification({ type, text });
     setTimeout(() => setNotification(null), 4000);
   };
@@ -237,7 +240,12 @@ export const OrganizationStructureView: React.FC = () => {
   const openAddUser = (initialRole?: UserRole | React.MouseEvent) => {
     setUserFullName('');
     setUserEmail('');
-    setUserRole(typeof initialRole === 'string' ? initialRole : 'COURSE_FACULTY');
+    const allowed = academicScope.assignableRoles;
+    const requested = typeof initialRole === 'string' ? initialRole : undefined;
+    const defaultRole = (requested && allowed.includes(requested))
+      ? requested
+      : (allowed.length > 0 ? allowed[0] : 'COURSE_FACULTY');
+    setUserRole(defaultRole);
     setUserDepartment(departments[0]?.name || 'Computer Science & Engineering');
     setEditingId(null);
     setModalType('addUser');
@@ -340,6 +348,12 @@ export const OrganizationStructureView: React.FC = () => {
     if (!userFullName.trim() || !userEmail.trim()) return;
 
     if (modalType === 'addUser') {
+      // Validate role hierarchy permission
+      if (academicScope.assignableRoles.length > 0 && !academicScope.assignableRoles.includes(userRole)) {
+        showMsg(`You do not have permission to assign the role "${userRole}".`, 'error');
+        return;
+      }
+
       // Check existing email
       const existing = users.find((u) => u.email.toLowerCase() === userEmail.trim().toLowerCase());
       if (existing) {
@@ -356,9 +370,16 @@ export const OrganizationStructureView: React.FC = () => {
         status: 'PENDING_PASSWORD_SETUP',
       });
 
-      showMsg(
-        `Account created for ${res.user.fullName}. Welcome email with OTP (${res.otp}) dispatched to ${res.user.email}.`
-      );
+      if (res.user.approvalStatus === 'PENDING') {
+        showMsg(
+          `Account created for ${res.user.fullName} (${res.user.role}). Queued for Administrator approval before activation.`,
+          'info'
+        );
+      } else {
+        showMsg(
+          `Account created for ${res.user.fullName}. Welcome email with OTP (${res.otp}) dispatched to ${res.user.email}.`
+        );
+      }
     } else if (editingId) {
       updateUser(editingId, {
         fullName: sanitizeInput(userFullName).trim(),
@@ -550,11 +571,15 @@ export const OrganizationStructureView: React.FC = () => {
             className={`mt-4 p-3 rounded-xl text-xs flex items-center gap-2 ${
               notification.type === 'success'
                 ? 'bg-emerald-950/60 border border-emerald-800 text-emerald-200'
+                : notification.type === 'info'
+                ? 'bg-amber-950/60 border border-amber-800 text-amber-200'
                 : 'bg-rose-950/60 border border-rose-800 text-rose-200'
             }`}
           >
             {notification.type === 'success' ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : notification.type === 'info' ? (
+              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
             ) : (
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
             )}
@@ -1032,22 +1057,114 @@ export const OrganizationStructureView: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => setShowBulkUpload(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload Users</span>
-              </button>
-              <button
-                onClick={() => openAddUser()}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add User Account</span>
-              </button>
+              {academicScope.canCreateUser && (
+                <>
+                  <button
+                    onClick={() => setShowBulkUpload(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Bulk Upload Users</span>
+                  </button>
+                  <button
+                    onClick={() => openAddUser()}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add User Account</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Pending Account Approvals Section (Admin Approval Required) */}
+          {users.some((u) => u.approvalStatus === 'PENDING') && (
+            <div className="bg-amber-950/20 border border-amber-800/60 rounded-2xl p-4 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div>
+                    <h3 className="font-bold text-sm text-amber-300">
+                      Pending Account Approvals ({users.filter((u) => u.approvalStatus === 'PENDING').length})
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Accounts created by Unit Heads (HoF, HoS, HoD) require Institutional Administrator authorization before activation.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono uppercase px-2.5 py-1 rounded-full bg-amber-950/60 border border-amber-800 text-amber-300 self-start sm:self-center">
+                  {academicScope.canApproveUser ? 'Admin Action Required' : 'Awaiting Admin Review'}
+                </span>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-800/80 bg-slate-950/50">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-900/80 border-b border-slate-800 text-slate-400 uppercase text-[10px]">
+                      <th className="px-3 py-2.5">Candidate</th>
+                      <th className="px-3 py-2.5">Requested Role</th>
+                      <th className="px-3 py-2.5">Department</th>
+                      <th className="px-3 py-2.5">Submitted By</th>
+                      <th className="px-3 py-2.5 text-right">Approval Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                    {users
+                      .filter((u) => u.approvalStatus === 'PENDING')
+                      .map((pu) => (
+                        <tr key={pu.id} className="hover:bg-slate-900/40 transition-colors">
+                          <td className="px-3 py-2.5">
+                            <div className="font-semibold text-white">{pu.fullName}</div>
+                            <div className="text-[10px] font-mono text-slate-400">{pu.email}</div>
+                          </td>
+                          <td className="px-3 py-2.5">{renderRoleBadge(pu.role)}</td>
+                          <td className="px-3 py-2.5 text-slate-300">{pu.department || '—'}</td>
+                          <td className="px-3 py-2.5 text-[11px]">
+                            <span className="text-white font-medium">{pu.createdByName || 'Unit Head'}</span>
+                            <span className="text-slate-500 block text-[10px]">{pu.createdByRole?.replace(/_/g, ' ') || 'Authorized Head'}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            {academicScope.canApproveUser ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => {
+                                    const res = approveUserAccount(pu.id);
+                                    if (res.success) {
+                                      showMsg(res.message);
+                                    } else {
+                                      showMsg(res.message, 'error');
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-[11px] shadow-sm transition-colors flex items-center gap-1"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Approve & Activate</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const reason = prompt(`Enter rejection reason for ${pu.fullName}:`, 'Role credentials could not be verified');
+                                    if (reason !== null) {
+                                      const res = rejectUserAccount(pu.id, reason);
+                                      showMsg(res.message);
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800 font-semibold rounded-lg text-[11px] transition-colors"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-amber-400/80 italic">Pending Admin Review</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* User Filtering & Search Controls */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
@@ -1116,7 +1233,17 @@ export const OrganizationStructureView: React.FC = () => {
                           {u.department || 'General Administration'}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {u.status === 'ACTIVE' ? (
+                          {u.approvalStatus === 'PENDING' ? (
+                            <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800 text-amber-300">
+                              <Clock className="w-3 h-3 text-amber-400" />
+                              Pending Approval
+                            </span>
+                          ) : u.approvalStatus === 'REJECTED' ? (
+                            <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-rose-950/80 border border-rose-800 text-rose-300">
+                              <AlertCircle className="w-3 h-3 text-rose-400" />
+                              Rejected
+                            </span>
+                          ) : u.status === 'ACTIVE' ? (
                             <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-800 text-emerald-300">
                               <Check className="w-3 h-3 text-emerald-400" />
                               Active
@@ -1911,21 +2038,41 @@ export const OrganizationStructureView: React.FC = () => {
                   required
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
                 >
-                  <option value="TENANT_ADMIN">Institutional Admin (Master Governance)</option>
-                  <option value="HEAD_OF_FACULTY">Head of Faculty (HoF) - Eligible to Head Faculty</option>
-                  <option value="HEAD_OF_SCHOOL">Head of School (HoS) - Eligible to Head School</option>
-                  <option value="HOD">Head of Department (HoD) - Eligible to Head Department</option>
-                  <option value="COURSE_FACULTY">Faculty - Teaching & Marks Entry (Restricted: Cannot Head Units)</option>
-                  <option value="COURSE_COORDINATOR">Course Coordinator - Blueprints & CO Mapping</option>
-                  <option value="STUDENT">Student - Learner Profile</option>
+                  {(academicScope.assignableRoles.length > 0
+                    ? academicScope.assignableRoles
+                    : (['COURSE_FACULTY', 'STUDENT'] as UserRole[])
+                  ).map((r) => {
+                    const roleLabels: Record<UserRole, string> = {
+                      SUPER_ADMIN: 'Super Administrator',
+                      TENANT_ADMIN: 'Institutional Admin (Master Governance)',
+                      HEAD_OF_FACULTY: 'Head of Faculty (HoF) - Eligible to Head Faculty',
+                      HEAD_OF_SCHOOL: 'Head of School (HoS) - Eligible to Head School',
+                      HOD: 'Head of Department (HoD) - Eligible to Head Department',
+                      DEAN: 'Dean of Faculty / School',
+                      COURSE_COORDINATOR: 'Course Coordinator - Blueprints & CO Mapping',
+                      COURSE_FACULTY: 'Faculty - Teaching & Marks Entry',
+                      STUDENT: 'Student - Learner Profile',
+                    };
+                    return (
+                      <option key={r} value={r}>
+                        {roleLabels[r] || r}
+                      </option>
+                    );
+                  })}
                 </select>
                 <div className="mt-2 p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
                   <div className="font-semibold text-slate-300 flex items-center gap-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Role Governance Policy:</span>
+                    <span>Hierarchy Restriction Policy:</span>
                   </div>
                   <p>
-                    Accounts with just <strong className="text-white">Faculty</strong> role cannot be assigned as Heads of Faculty, School, or Department. Only accounts provisioned with <strong className="text-teal-300">HoF</strong>, <strong className="text-indigo-300">HoS</strong>, or <strong className="text-amber-300">HoD</strong> can be appointed as unit heads.
+                    {currentUser?.role === 'TENANT_ADMIN' ? (
+                      'As Institutional Admin, you have full governance to provision and approve any administrative or academic role.'
+                    ) : (
+                      <>
+                        As <strong className="text-white">{currentUser?.role?.replace(/_/g, ' ')}</strong>, you can only create accounts with roles <em>strictly below your level</em>. Provisioned accounts are queued for Administrator approval before activation.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -1941,14 +2088,21 @@ export const OrganizationStructureView: React.FC = () => {
                 />
               </div>
 
-              {modalType === 'addUser' && (
+              {modalType === 'addUser' && currentUser?.role !== 'TENANT_ADMIN' ? (
+                <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-[11px] text-amber-300 flex items-start gap-2">
+                  <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Requires Administrator Approval:</strong> This account will be created with status <strong className="text-white font-mono">PENDING_APPROVAL</strong>. The Institutional Admin must approve this user before their login is enabled and OTP instructions are emailed.
+                  </span>
+                </div>
+              ) : modalType === 'addUser' ? (
                 <div className="p-3 bg-indigo-950/40 border border-indigo-800/60 rounded-xl text-[11px] text-indigo-300 flex items-start gap-2">
                   <Sparkles className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                   <span>
                     Upon saving, a secure 6-digit OTP code and password activation link will be automatically generated and dispatched to this email.
                   </span>
                 </div>
-              )}
+              ) : null}
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
                 <button
@@ -1962,7 +2116,11 @@ export const OrganizationStructureView: React.FC = () => {
                   type="submit"
                   className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm"
                 >
-                  {modalType === 'addUser' ? 'Create Account & Send OTP' : 'Save Changes'}
+                  {modalType === 'addUser'
+                    ? currentUser?.role === 'TENANT_ADMIN'
+                      ? 'Create Account & Send OTP'
+                      : 'Submit for Admin Approval'
+                    : 'Save Changes'}
                 </button>
               </div>
             </form>
