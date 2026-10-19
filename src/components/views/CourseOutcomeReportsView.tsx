@@ -42,6 +42,8 @@ export const CourseOutcomeReportsView: React.FC = () => {
     tenant,
     activeSubTab: globalSubTab,
     setActiveSubTab: setGlobalSubTab,
+    courseSections,
+    academicScope,
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'co' | 'po' | 'accreditation'>(
@@ -67,17 +69,48 @@ export const CourseOutcomeReportsView: React.FC = () => {
   const [indirectWeight, setIndirectWeight] = useState(config.indirectWeight);
   const [defaultTargetLevel, setDefaultTargetLevel] = useState(config.defaultTargetLevel);
 
+  const displayedCourses = academicScope.visibleCourses;
   const activeCourse = useMemo(() => {
-    return courses.find((c) => c.id === activeCourseId) || courses[0];
-  }, [courses, activeCourseId]);
+    return displayedCourses.find((c) => c.id === activeCourseId) || displayedCourses[0];
+  }, [displayedCourses, activeCourseId]);
 
+  const displayedPrograms = academicScope.visiblePrograms;
   const activeProgram = useMemo(() => {
     return (
-      programs.find((p) => p.id === activeCourse?.programId) ||
-      programs.find((p) => p.id === activeProgramId) ||
-      programs[0]
+      displayedPrograms.find((p) => p.id === activeCourse?.programId) ||
+      displayedPrograms.find((p) => p.id === activeProgramId) ||
+      displayedPrograms[0]
     );
-  }, [programs, activeCourse, activeProgramId]);
+  }, [displayedPrograms, activeCourse, activeProgramId]);
+
+  // Section handling and restriction
+  const isSectionFacultyOnly = academicScope.isFaculty && !academicScope.isCoordinator && !academicScope.isHod && !academicScope.isAdmin;
+  const courseSectionsForActiveCourse = useMemo(() => {
+    return courseSections.filter((s) => s.courseId === activeCourse?.id);
+  }, [courseSections, activeCourse]);
+
+  const mappedFacultySections = useMemo(() => {
+    return academicScope.mappedSections.filter((s) => s.courseId === activeCourse?.id);
+  }, [academicScope, activeCourse]);
+
+  // Default selected section
+  const [selectedSectionId, setSelectedSectionId] = useState<string>('ALL');
+
+  // If section faculty, auto-lock to their mapped section
+  React.useEffect(() => {
+    if (isSectionFacultyOnly) {
+      if (mappedFacultySections.length > 0) {
+        setSelectedSectionId(mappedFacultySections[0].id);
+      } else if (courseSectionsForActiveCourse.length > 0) {
+        setSelectedSectionId(courseSectionsForActiveCourse[0].id);
+      }
+    }
+  }, [isSectionFacultyOnly, mappedFacultySections, courseSectionsForActiveCourse]);
+
+  const activeSection = useMemo(() => {
+    if (selectedSectionId === 'ALL') return null;
+    return courseSectionsForActiveCourse.find((s) => s.id === selectedSectionId) || null;
+  }, [courseSectionsForActiveCourse, selectedSectionId]);
 
   // Filter POs strictly by the active program
   const isolatedProgramOutcomes = useMemo(() => {
@@ -91,12 +124,32 @@ export const CourseOutcomeReportsView: React.FC = () => {
     return courseOutcomes.filter((co) => co.courseId === activeCourse.id);
   }, [courseOutcomes, activeCourse]);
 
+  // Scoped student enrollments & marks based on section selection
+  const scopedEnrollments = useMemo(() => {
+    let list = students.filter((s) => !s.courseId || s.courseId === activeCourse?.id);
+    if (isSectionFacultyOnly) {
+      const targetSecId = selectedSectionId !== 'ALL' ? selectedSectionId : (mappedFacultySections[0]?.id || '');
+      if (targetSecId) {
+        list = list.filter((s) => s.sectionId === targetSecId);
+      }
+    } else if (selectedSectionId !== 'ALL') {
+      list = list.filter((s) => s.sectionId === selectedSectionId);
+    }
+    return list;
+  }, [students, activeCourse, selectedSectionId, isSectionFacultyOnly, mappedFacultySections]);
+
+  const scopedStudentIds = useMemo(() => new Set(scopedEnrollments.map((s) => s.id)), [scopedEnrollments]);
+
+  const scopedMarks = useMemo(() => {
+    return marks.filter((m) => scopedStudentIds.has(m.enrollmentId));
+  }, [marks, scopedStudentIds]);
+
   // Live OBE Attainment Computation
   const report = useMemo(() => {
     if (
       courseSpecificOutcomes.length === 0 ||
       questions.length === 0 ||
-      students.length === 0
+      scopedEnrollments.length === 0
     ) {
       return null;
     }
@@ -112,23 +165,25 @@ export const CourseOutcomeReportsView: React.FC = () => {
       courseId: activeCourse?.id || 'course-default',
       courseCode: activeCourse?.code || 'CS2026',
       courseTitle: activeCourse?.title || 'Course 2026',
-      sectionName: 'A',
+      sectionName: activeSection?.name || (selectedSectionId === 'ALL' ? 'Course-wide (All Sections)' : 'Section A'),
       academicYear: '2026-2027',
       courseOutcomes: courseSpecificOutcomes,
       programOutcomes: isolatedProgramOutcomes,
       questions,
-      enrollments: students,
-      markEntries: marks,
+      enrollments: scopedEnrollments,
+      markEntries: scopedMarks,
       coPoMappings,
       surveyResponses,
     });
   }, [
     activeCourse,
+    activeSection,
+    selectedSectionId,
     courseSpecificOutcomes,
     isolatedProgramOutcomes,
     questions,
-    students,
-    marks,
+    scopedEnrollments,
+    scopedMarks,
     coPoMappings,
     surveyResponses,
     config,
@@ -270,7 +325,7 @@ export const CourseOutcomeReportsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Course & Program Selector Filter Bar */}
+        {/* Course, Program & Section Selector Filter Bar */}
         <div className="mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center gap-4 text-xs">
           <div>
             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
@@ -281,10 +336,10 @@ export const CourseOutcomeReportsView: React.FC = () => {
               onChange={(e) => setActiveCourseId(e.target.value)}
               className="bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500"
             >
-              {courses.length === 0 ? (
+              {displayedCourses.length === 0 ? (
                 <option value="">No courses created (See Menu 5)</option>
               ) : (
-                courses.map((c) => (
+                displayedCourses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.code} - {c.title} ({c.regulation || 'R2026'})
                   </option>
@@ -302,16 +357,45 @@ export const CourseOutcomeReportsView: React.FC = () => {
               onChange={(e) => setActiveProgramId(e.target.value)}
               className="bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500"
             >
-              {programs.length === 0 ? (
+              {displayedPrograms.length === 0 ? (
                 <option value="">No programs created (See Menu 3)</option>
               ) : (
-                programs.map((p) => (
+                displayedPrograms.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.batchYear || '2026-2030'})
                   </option>
                 ))
               )}
             </select>
+          </div>
+
+          {/* Section Filter / Scoping */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+              Section Scope
+            </label>
+            {isSectionFacultyOnly ? (
+              <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 px-3 py-1.5 rounded-lg text-emerald-400 font-bold">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{activeSection?.name || mappedFacultySections[0]?.name || 'Assigned Section'}</span>
+                <span className="text-[9px] bg-emerald-950 border border-emerald-800 text-emerald-300 px-1.5 py-0.5 rounded ml-1">
+                  Your Section Only
+                </span>
+              </div>
+            ) : (
+              <select
+                value={selectedSectionId}
+                onChange={(e) => setSelectedSectionId(e.target.value)}
+                className="bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500"
+              >
+                <option value="ALL">All Sections (Course-wide Aggregate)</option>
+                {courseSectionsForActiveCourse.map((sec) => (
+                  <option key={sec.id} value={sec.id}>
+                    {sec.name} ({sec.facultyName || 'Faculty'})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="ml-auto flex items-center gap-3 text-slate-400 pt-3 sm:pt-0">

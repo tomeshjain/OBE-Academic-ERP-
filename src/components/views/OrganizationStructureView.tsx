@@ -77,6 +77,7 @@ export const OrganizationStructureView: React.FC = () => {
     sendTestEmail,
     activeSubTab,
     setActiveSubTab,
+    academicScope,
   } = useApp();
 
   const [subTab, setSubTab] = useState<
@@ -163,6 +164,10 @@ export const OrganizationStructureView: React.FC = () => {
 
   // Open Hierarchy Modals
   const openAddFaculty = () => {
+    if (!academicScope.canCreateFaculty) {
+      showMsg('Access Restricted: Only Tenant Administrator can register a new Faculty. Head of Faculty can create schools within their faculty.', 'error');
+      return;
+    }
     setCode(`FAC-${faculties.length + 1}-2026`);
     setName('');
     setSelectedHeadUserId('');
@@ -179,9 +184,16 @@ export const OrganizationStructureView: React.FC = () => {
   };
 
   const openAddSchool = () => {
+    if (!academicScope.canCreateSchool) {
+      showMsg('Access Restricted: Only Tenant Administrator or Head of Faculty can create schools.', 'error');
+      return;
+    }
     setCode(`SCH-${schools.length + 1}-2026`);
     setName('');
-    setParentFacultyId(faculties[0]?.id || '');
+    const defaultFacId = academicScope.isHeadOfFaculty && academicScope.ledFaculty
+      ? academicScope.ledFaculty.id
+      : (academicScope.visibleFaculties[0]?.id || faculties[0]?.id || '');
+    setParentFacultyId(defaultFacId);
     setSelectedHeadUserId('');
     setEditingId(null);
     setModalType('addSchool');
@@ -197,9 +209,16 @@ export const OrganizationStructureView: React.FC = () => {
   };
 
   const openAddDept = () => {
+    if (!academicScope.canCreateDepartment) {
+      showMsg('Access Restricted: Only Tenant Administrator, Head of Faculty, or Head of School can create departments.', 'error');
+      return;
+    }
     setCode(`DEPT-${departments.length + 1}-2026`);
     setName('');
-    setParentSchoolId(schools[0]?.id || 'school-default');
+    const defaultSchoolId = academicScope.isHeadOfSchool && academicScope.ledSchool
+      ? academicScope.ledSchool.id
+      : (academicScope.visibleSchools[0]?.id || schools[0]?.id || 'school-default');
+    setParentSchoolId(defaultSchoolId);
     setSelectedHeadUserId('');
     setEditingId(null);
     setModalType('addDept');
@@ -554,35 +573,54 @@ export const OrganizationStructureView: React.FC = () => {
                 Top-level governance units headed by a Head of Faculty / Dean.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowBulkUpload(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload CSV</span>
-              </button>
-              <button
-                onClick={openAddFaculty}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Faculty</span>
-              </button>
-            </div>
+            {academicScope.canCreateFaculty && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowBulkUpload(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Upload CSV</span>
+                </button>
+                <button
+                  onClick={openAddFaculty}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Faculty</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {faculties.length === 0 ? (
+          {/* Head of Faculty Scoped Governance Notice */}
+          {academicScope.isHeadOfFaculty && academicScope.ledFaculty && (
+            <div className="bg-teal-950/40 border border-teal-800/80 rounded-2xl p-4 flex items-center justify-between text-xs text-teal-200">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-teal-400 shrink-0" />
+                <div>
+                  <span className="font-bold text-white">Governed Faculty: {academicScope.ledFaculty.name} ({academicScope.ledFaculty.code})</span>
+                  <p className="text-teal-300/90 text-[11px] mt-0.5">
+                    As Head of Faculty, you have full administrative governance over all schools, departments, and programs within your faculty. Creating new Faculties is restricted to the Tenant Administrator.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {academicScope.visibleFaculties.length === 0 ? (
             <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-12 text-center">
               <Building2 className="w-12 h-12 text-slate-600 mx-auto mb-3" />
               <h3 className="text-base font-semibold text-white">No Faculties Registered</h3>
               <p className="text-slate-400 text-xs mt-1 max-w-md mx-auto">
-                Click "Add Faculty" above to register faculties (e.g. Faculty of Engineering) and assign a Head of Faculty.
+                {academicScope.canCreateFaculty
+                  ? 'Click "Add Faculty" above to register faculties (e.g. Faculty of Engineering) and assign a Head of Faculty.'
+                  : 'No faculty is currently assigned to your account.'}
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {faculties.map((f) => {
+              {academicScope.visibleFaculties.map((f) => {
                 const childSchools = schools.filter((s) => s.facultyId === f.id);
                 return (
                   <div
@@ -597,20 +635,24 @@ export const OrganizationStructureView: React.FC = () => {
                         <button
                           onClick={() => openEditFaculty(f)}
                           className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                          title="Edit details"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete faculty "${f.name}"?`)) {
-                              deleteFaculty(f.id);
-                              showMsg(`Deleted faculty ${f.code}.`);
-                            }
-                          }}
-                          className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {academicScope.canCreateFaculty && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete faculty "${f.name}"?`)) {
+                                deleteFaculty(f.id);
+                                showMsg(`Deleted faculty ${f.code}.`);
+                              }
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                            title="Delete faculty"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -680,35 +722,54 @@ export const OrganizationStructureView: React.FC = () => {
                 Divisions under a Faculty, headed by an assigned Head of School.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowBulkUpload(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload CSV</span>
-              </button>
-              <button
-                onClick={openAddSchool}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add School</span>
-              </button>
-            </div>
+            {academicScope.canCreateSchool && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowBulkUpload(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Upload CSV</span>
+                </button>
+                <button
+                  onClick={openAddSchool}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add School</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {schools.length === 0 ? (
+          {/* Head of School Scoped Governance Notice */}
+          {academicScope.isHeadOfSchool && academicScope.ledSchool && (
+            <div className="bg-indigo-950/40 border border-indigo-800/80 rounded-2xl p-4 flex items-center justify-between text-xs text-indigo-200">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0" />
+                <div>
+                  <span className="font-bold text-white">Governed School: {academicScope.ledSchool.name} ({academicScope.ledSchool.code})</span>
+                  <p className="text-indigo-300/90 text-[11px] mt-0.5">
+                    As Head of School, you have full governance over all academic departments and programs under your school. Creating new Schools is handled by your Head of Faculty or Administrator.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {academicScope.visibleSchools.length === 0 ? (
             <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-12 text-center">
               <School className="w-12 h-12 text-slate-600 mx-auto mb-3" />
               <h3 className="text-base font-semibold text-white">No Schools Registered</h3>
               <p className="text-slate-400 text-xs mt-1 max-w-md mx-auto">
-                Click "Add School" to register schools (e.g. School of Computing) and assign a Head of School.
+                {academicScope.canCreateSchool
+                  ? 'Click "Add School" to register schools (e.g. School of Computing) and assign a Head of School.'
+                  : 'No school is currently assigned to your scope.'}
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {schools.map((s) => {
+              {academicScope.visibleSchools.map((s) => {
                 const parentFac = faculties.find((f) => f.id === s.facultyId);
                 const childDepts = departments.filter((d) => d.schoolId === s.id);
                 return (
@@ -724,20 +785,24 @@ export const OrganizationStructureView: React.FC = () => {
                         <button
                           onClick={() => openEditSchool(s)}
                           className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                          title="Edit details"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete school "${s.name}"?`)) {
-                              deleteSchool(s.id);
-                              showMsg(`Deleted school ${s.code}.`);
-                            }
-                          }}
-                          className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {academicScope.canCreateSchool && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete school "${s.name}"?`)) {
+                                deleteSchool(s.id);
+                                showMsg(`Deleted school ${s.code}.`);
+                              }
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                            title="Delete school"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -810,35 +875,54 @@ export const OrganizationStructureView: React.FC = () => {
                 Operating departments offering curricular degree programs, headed by an HOD.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowBulkUpload(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload CSV</span>
-              </button>
-              <button
-                onClick={openAddDept}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Department</span>
-              </button>
-            </div>
+            {academicScope.canCreateDepartment && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowBulkUpload(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Upload CSV</span>
+                </button>
+                <button
+                  onClick={openAddDept}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Department</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {departments.length === 0 ? (
+          {/* HOD Scoped Governance Notice */}
+          {academicScope.isHod && academicScope.ledDepartment && (
+            <div className="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-4 flex items-center justify-between text-xs text-amber-200">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
+                <div>
+                  <span className="font-bold text-white">Governed Department: {academicScope.ledDepartment.name} ({academicScope.ledDepartment.code})</span>
+                  <p className="text-amber-300/90 text-[11px] mt-0.5">
+                    As Head of Department (HOD), you have full authority over degree programs, courses, section allocation, and mark deadlines within your department. Creating new Departments is managed by your Head of School.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {academicScope.visibleDepartments.length === 0 ? (
             <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-12 text-center">
               <GraduationCap className="w-12 h-12 text-slate-600 mx-auto mb-3" />
               <h3 className="text-base font-semibold text-white">No Departments Registered</h3>
               <p className="text-slate-400 text-xs mt-1 max-w-md mx-auto">
-                Click "Add Department" to register departments (e.g. Computer Science & Engineering) and map an HOD.
+                {academicScope.canCreateDepartment
+                  ? 'Click "Add Department" to register departments (e.g. Computer Science & Engineering) and map an HOD.'
+                  : 'No department is currently assigned to your scope.'}
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {departments.map((d) => {
+              {academicScope.visibleDepartments.map((d) => {
                 const parentSch = schools.find((s) => s.id === d.schoolId);
                 return (
                   <div
@@ -853,20 +937,24 @@ export const OrganizationStructureView: React.FC = () => {
                         <button
                           onClick={() => openEditDept(d)}
                           className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                          title="Edit details"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete department "${d.name}"?`)) {
-                              deleteDepartment(d.id);
-                              showMsg(`Deleted department ${d.code}.`);
-                            }
-                          }}
-                          className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {academicScope.canCreateDepartment && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete department "${d.name}"?`)) {
+                                deleteDepartment(d.id);
+                                showMsg(`Deleted department ${d.code}.`);
+                              }
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                            title="Delete department"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1555,18 +1643,25 @@ export const OrganizationStructureView: React.FC = () => {
             <form onSubmit={handleSaveSchool} className="p-5 space-y-4 text-xs">
               <div>
                 <label className="font-semibold text-slate-300 block mb-1">Parent Faculty *</label>
-                <select
-                  value={parentFacultyId}
-                  onChange={(e) => setParentFacultyId(e.target.value)}
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
-                >
-                  {faculties.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.code} - {f.name}
-                    </option>
-                  ))}
-                </select>
+                {academicScope.isHeadOfFaculty && academicScope.ledFaculty ? (
+                  <div className="w-full bg-slate-950/80 border border-teal-800/60 rounded-xl px-3 py-2 text-teal-300 flex items-center justify-between">
+                    <span>{academicScope.ledFaculty.code} - {academicScope.ledFaculty.name}</span>
+                    <span className="text-[10px] bg-teal-950 px-2 py-0.5 rounded border border-teal-800 font-mono text-teal-400">Your Governed Faculty</span>
+                  </div>
+                ) : (
+                  <select
+                    value={parentFacultyId}
+                    onChange={(e) => setParentFacultyId(e.target.value)}
+                    required
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
+                  >
+                    {academicScope.visibleFaculties.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.code} - {f.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div>
@@ -1663,22 +1758,30 @@ export const OrganizationStructureView: React.FC = () => {
 
             <form onSubmit={handleSaveDept} className="p-5 space-y-4 text-xs">
               <div>
-                <label className="font-semibold text-slate-300 block mb-1">Parent School</label>
-                <select
-                  value={parentSchoolId}
-                  onChange={(e) => setParentSchoolId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
-                >
-                  {schools.length === 0 ? (
-                    <option value="school-default">General School</option>
-                  ) : (
-                    schools.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.code} - {s.name}
-                      </option>
-                    ))
-                  )}
-                </select>
+                <label className="font-semibold text-slate-300 block mb-1">Parent School *</label>
+                {academicScope.isHeadOfSchool && academicScope.ledSchool ? (
+                  <div className="w-full bg-slate-950/80 border border-indigo-800/60 rounded-xl px-3 py-2 text-indigo-300 flex items-center justify-between">
+                    <span>{academicScope.ledSchool.code} - {academicScope.ledSchool.name}</span>
+                    <span className="text-[10px] bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800 font-mono text-indigo-400">Your Governed School</span>
+                  </div>
+                ) : (
+                  <select
+                    value={parentSchoolId}
+                    onChange={(e) => setParentSchoolId(e.target.value)}
+                    required
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-indigo-500 focus:outline-none cursor-pointer"
+                  >
+                    {academicScope.visibleSchools.length === 0 ? (
+                      <option value="school-default">General School</option>
+                    ) : (
+                      academicScope.visibleSchools.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.code} - {s.name}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
               </div>
 
               <div>

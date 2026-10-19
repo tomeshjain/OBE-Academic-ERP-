@@ -14,6 +14,7 @@ import {
   Clock,
   Layers,
   FileSpreadsheet,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const TermsView: React.FC = () => {
@@ -28,7 +29,10 @@ export const TermsView: React.FC = () => {
     programs,
     activeSubTab,
     setActiveSubTab,
+    academicScope,
   } = useApp();
+
+  const canManageTerms = academicScope.isAdmin || academicScope.isHeadOfFaculty;
 
   const [subTab, setSubTab] = useState<'terms' | 'timeline'>(
     (['terms', 'timeline'].includes(activeSubTab) ? (activeSubTab as any) : 'terms')
@@ -65,6 +69,7 @@ export const TermsView: React.FC = () => {
   };
 
   const openAdd = () => {
+    if (!canManageTerms) return;
     setCode(`TERM-2026-SEM${terms.length + 1}`);
     setName(`Semester ${terms.length + 1} (Batch 2026)`);
     setAcademicYear('2026-2027');
@@ -77,6 +82,7 @@ export const TermsView: React.FC = () => {
   };
 
   const openEdit = (t: AcademicTerm) => {
+    if (!canManageTerms) return;
     setCode(t.code);
     setName(t.name);
     setAcademicYear(t.academicYear);
@@ -95,7 +101,7 @@ export const TermsView: React.FC = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim() || !name.trim()) return;
+    if (!canManageTerms || !code.trim() || !name.trim()) return;
 
     if (modalType === 'add') {
       addTerm({
@@ -141,22 +147,29 @@ export const TermsView: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowBulkModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Bulk Upload CSV</span>
-            </button>
-            <button
-              onClick={openAdd}
-              className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Term</span>
-            </button>
-          </div>
+          {canManageTerms ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowBulkModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Bulk Upload CSV</span>
+              </button>
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Term</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-amber-400">
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>Institutional Calendar Governance (Read-Only)</span>
+            </div>
+          )}
         </div>
 
         {/* Feedback Alert */}
@@ -206,13 +219,15 @@ export const TermsView: React.FC = () => {
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
                 Create the first semester for the 2026 Batch (e.g. Semester I, Aug 2026 to Dec 2026).
               </p>
-              <button
-                onClick={openAdd}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Semester I (Batch 2026)</span>
-              </button>
+              {canManageTerms && (
+                <button
+                  onClick={openAdd}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl inline-flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Semester I (Batch 2026)</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-slate-800">
@@ -264,22 +279,26 @@ export const TermsView: React.FC = () => {
                       >
                         {isSelected ? 'Selected' : 'Set as Active'}
                       </button>
-                      <button
-                        onClick={() => openEdit(t)}
-                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
-                        title="Edit Term"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete academic term "${t.name}"?`)) deleteTerm(t.id);
-                        }}
-                        className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
-                        title="Delete Term"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canManageTerms && (
+                        <>
+                          <button
+                            onClick={() => openEdit(t)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+                            title="Edit Term"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete academic term "${t.name}"?`)) deleteTerm(t.id);
+                            }}
+                            className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+                            title="Delete Term"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );

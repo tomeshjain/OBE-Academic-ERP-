@@ -42,6 +42,7 @@ import {
   Save,
   Check,
   User,
+  ShieldCheck,
 } from 'lucide-react';
 import { BulkDataUploadModal, BulkUploadColumn } from '@/components/BulkDataUploadModal';
 import { sanitizeInput } from '@/lib/security';
@@ -86,6 +87,7 @@ export const AssessmentQuestionsView: React.FC = () => {
     extendAssessmentWindowDeadline,
     activeSubTab,
     setActiveSubTab,
+    academicScope,
   } = useApp();
 
   const [subTab, setSubTab] = useState<'designer' | 'windows' | 'templates'>(
@@ -103,7 +105,24 @@ export const AssessmentQuestionsView: React.FC = () => {
     setActiveSubTab(tab);
   };
 
-  const activeCourse = courses.find((c) => c.id === activeCourseId) || courses[0] || null;
+  const displayedCourses = academicScope.visibleCourses;
+  const activeCourse = displayedCourses.find((c) => c.id === activeCourseId) || displayedCourses[0] || null;
+  const canManageCourse = academicScope.canManageCourse(activeCourse?.id);
+  const canUnlockOrExtendDeadline = academicScope.canUnlockOrExtendDeadline;
+
+  // Scoped Assessment Windows
+  const visibleAssessmentWindows = assessmentWindows.filter((win) => {
+    if (academicScope.isAdmin || academicScope.isHeadOfFaculty || academicScope.isHeadOfSchool || academicScope.isHod) {
+      return academicScope.visibleCourses.some((c) => c.id === win.courseId);
+    }
+    if (academicScope.isCoordinator) {
+      return academicScope.coordinatedCourses.some((c) => c.id === win.courseId);
+    }
+    if (academicScope.isFaculty) {
+      return academicScope.mappedSections.some((s) => s.id === win.sectionId);
+    }
+    return true;
+  });
 
   // Filter subcomponents for active course
   const currentSubComponents = scoringSubComponents.filter(
@@ -212,6 +231,10 @@ export const AssessmentQuestionsView: React.FC = () => {
   const handleSaveInlineSection = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeQuestionPaper) return;
+    if (!canManageCourse) {
+      showMsg('Unauthorized: Only Course Coordinators and Heads can add sections.', 'error');
+      return;
+    }
 
     addQuestionPaperSection({
       questionPaperId: activeQuestionPaper.id,
@@ -232,6 +255,7 @@ export const AssessmentQuestionsView: React.FC = () => {
 
   // Open inline question form inside a specific section
   const openInlineAddQuestion = (secId: string) => {
+    if (!canManageCourse) return;
     setInlineSectionId(secId);
     const count = currentPaperQuestions.filter((q) => q.sectionId === secId).length;
     setQNumber(`Q${count + 1}`);
@@ -250,6 +274,10 @@ export const AssessmentQuestionsView: React.FC = () => {
   const handleSaveInlineQuestion = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeQuestionPaper || !inlineSectionId) return;
+    if (!canManageCourse) {
+      showMsg('Unauthorized: Only Course Coordinators and Heads can add questions.', 'error');
+      return;
+    }
 
     let finalQNumber = sanitizeInput(qNumber).trim();
     if (qIsPart && qPartLabel.trim()) {
@@ -287,6 +315,10 @@ export const AssessmentQuestionsView: React.FC = () => {
   const handleSaveAsTemplate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeQuestionPaper) return;
+    if (!canManageCourse) {
+      showMsg('Unauthorized: Only Course Coordinators and Heads can save templates.', 'error');
+      return;
+    }
 
     const tplName = newTemplateName.trim() || `${activeQuestionPaper.title} Template`;
     const newTpl: QuestionPaperTemplate = {
@@ -335,6 +367,10 @@ export const AssessmentQuestionsView: React.FC = () => {
   // Handle Apply Template
   const handleApplyTemplate = () => {
     if (!activeQuestionPaper || !selectedTemplateId) return;
+    if (!canManageCourse) {
+      showMsg('Unauthorized: Only Course Coordinators and Heads can apply templates.', 'error');
+      return;
+    }
     applyQuestionPaperTemplate(
       selectedTemplateId,
       activeQuestionPaper.id,
@@ -347,6 +383,10 @@ export const AssessmentQuestionsView: React.FC = () => {
   // Handle Save Assessment Window
   const handleSaveWindow = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canUnlockOrExtendDeadline && !canManageCourse) {
+      showMsg('Unauthorized: Only Course Coordinators, HODs, or Admins can configure assessment windows.', 'error');
+      return;
+    }
     const course = courses.find((c) => c.id === windowCourseId) || activeCourse;
     const subComp = scoringSubComponents.find((s) => s.id === windowSubCompId);
     if (!course || !subComp) {
@@ -528,7 +568,7 @@ export const AssessmentQuestionsView: React.FC = () => {
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
-              <span>Windows &amp; Deadlines ({assessmentWindows.length})</span>
+              <span>Windows &amp; Deadlines ({visibleAssessmentWindows.length})</span>
             </button>
             <button
               onClick={() => switchSubTab('templates')}
@@ -605,55 +645,62 @@ export const AssessmentQuestionsView: React.FC = () => {
             </div>
 
             {/* Quick Actions: Save Template, Apply Template, Bulk Upload */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => setShowBulkUpload(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-                title="Bulk Upload Questions via CSV"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-teal-400" />
-                <span>Bulk Upload</span>
-              </button>
+            {canManageCourse ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setShowBulkUpload(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                  title="Bulk Upload Questions via CSV"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Bulk Upload</span>
+                </button>
 
-              <button
-                onClick={() => setModalType('applyTemplate')}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Apply Template</span>
-              </button>
+                <button
+                  onClick={() => setModalType('applyTemplate')}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Apply Template</span>
+                </button>
 
-              <button
-                onClick={() => {
-                  showMsg('✓ Question paper blueprint and question-wise CO allocations safely saved to institution database!');
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-950/40 transition-all active:scale-95"
-                title="Explicitly save blueprint and question allocations to database"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Save Blueprint</span>
-              </button>
+                <button
+                  onClick={() => {
+                    showMsg('✓ Question paper blueprint and question-wise CO allocations safely saved to institution database!');
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-950/40 transition-all active:scale-95"
+                  title="Explicitly save blueprint and question allocations to database"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save Blueprint</span>
+                </button>
 
-              <button
-                onClick={() => {
-                  setNewTemplateName(`${activeQuestionPaper?.title || 'Course'} Blueprint Template`);
-                  setModalType('saveAsTemplate');
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
-                title="Save current sections and questions as a reusable blueprint template"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Save as Template</span>
-              </button>
+                <button
+                  onClick={() => {
+                    setNewTemplateName(`${activeQuestionPaper?.title || 'Course'} Blueprint Template`);
+                    setModalType('saveAsTemplate');
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                  title="Save current sections and questions as a reusable blueprint template"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Save as Template</span>
+                </button>
 
-              <button
-                onClick={() => setShowInlineAddSection(!showInlineAddSection)}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{showInlineAddSection ? 'Cancel Section' : '+ New Section'}</span>
-              </button>
-            </div>
+                <button
+                  onClick={() => setShowInlineAddSection(!showInlineAddSection)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{showInlineAddSection ? 'Cancel Section' : '+ New Section'}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-amber-400">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span>Blueprint Governed by Course Coordinator</span>
+              </div>
+            )}
           </div>
 
           {/* Paper Summary Pill Bar */}
@@ -813,34 +860,36 @@ export const AssessmentQuestionsView: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            if (isInlineAddOpen) {
-                              setInlineSectionId(null);
-                            } else {
-                              openInlineAddQuestion(sec.id);
-                            }
-                          }}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>{isInlineAddOpen ? 'Close Form' : '+ Add Question'}</span>
-                        </button>
+                      {canManageCourse && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              if (isInlineAddOpen) {
+                                setInlineSectionId(null);
+                              } else {
+                                openInlineAddQuestion(sec.id);
+                              }
+                            }}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>{isInlineAddOpen ? 'Close Form' : '+ Add Question'}</span>
+                          </button>
 
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete ${sec.sectionName} and its ${sectionQuestions.length} questions?`)) {
-                              deleteQuestionPaperSection(sec.id);
-                              showMsg(`Deleted ${sec.sectionName}.`);
-                            }
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                          title="Delete Section"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete ${sec.sectionName} and its ${sectionQuestions.length} questions?`)) {
+                                deleteQuestionPaperSection(sec.id);
+                                showMsg(`Deleted ${sec.sectionName}.`);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                            title="Delete Section"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* INLINE ADD QUESTION FORM (No popup modal!) */}
@@ -1025,13 +1074,14 @@ export const AssessmentQuestionsView: React.FC = () => {
                               <th className="px-4 py-2.5 w-24">Q. No</th>
                               <th className="px-4 py-2.5">Question Text / Statement (Optional)</th>
                               <th className="px-4 py-2.5 w-24 text-center">Marks</th>
-                              <th className="px-4 py-2.5 w-28 text-center">CO (Dropdown)</th>
-                              <th className="px-4 py-2.5 w-36 text-center">Bloom&apos;s (Dropdown)</th>
-                              <th className="px-4 py-2.5 w-16 text-right">Delete</th>
+                              <th className="px-4 py-2.5 w-28 text-center">{canManageCourse ? 'CO (Dropdown)' : 'CO'}</th>
+                              <th className="px-4 py-2.5 w-36 text-center">{canManageCourse ? "Bloom's (Dropdown)" : "Bloom's"}</th>
+                              {canManageCourse && <th className="px-4 py-2.5 w-16 text-right">Delete</th>}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800/60 text-slate-300">
                             {sectionQuestions.map((q) => {
+                              const matchedCo = currentCourseOutcomes.find((c) => c.id === q.courseOutcomeId);
                               return (
                                 <tr key={q.id} className="hover:bg-slate-800/30 transition-colors">
                                   {/* Q Number */}
@@ -1057,78 +1107,96 @@ export const AssessmentQuestionsView: React.FC = () => {
                                     )}
                                   </td>
 
-                                  {/* Marks (Inline editable) */}
+                                  {/* Marks (Inline editable if canManageCourse) */}
                                   <td className="px-4 py-2.5 text-center">
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      value={q.maxMarks}
-                                      onChange={(e) => {
-                                        const val = Number(e.target.value);
-                                        updateQuestion(q.id, { maxMarks: val });
-                                      }}
-                                      className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-1.5 py-1 text-center font-mono font-bold text-teal-300 focus:border-teal-500 focus:outline-none"
-                                    />
+                                    {canManageCourse ? (
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        value={q.maxMarks}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value);
+                                          updateQuestion(q.id, { maxMarks: val });
+                                        }}
+                                        className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-1.5 py-1 text-center font-mono font-bold text-teal-300 focus:border-teal-500 focus:outline-none"
+                                      />
+                                    ) : (
+                                      <span className="font-mono font-bold text-teal-300">{q.maxMarks}M</span>
+                                    )}
                                   </td>
 
-                                  {/* Course Outcome (Direct Dropdown) */}
+                                  {/* Course Outcome (Direct Dropdown if canManageCourse) */}
                                   <td className="px-4 py-2.5 text-center">
-                                    <select
-                                      value={q.courseOutcomeId}
-                                      onChange={(e) => {
-                                        updateQuestion(q.id, { courseOutcomeId: e.target.value });
-                                        const matched = currentCourseOutcomes.find((c) => c.id === e.target.value);
-                                        showMsg(`Updated ${q.questionNumber} to ${matched?.code || 'CO'}`);
-                                      }}
-                                      className="bg-slate-950 border border-slate-700 text-indigo-300 font-mono font-bold text-xs rounded-lg px-2 py-1 focus:border-indigo-500 focus:outline-none cursor-pointer"
-                                    >
-                                      {currentCourseOutcomes.length === 0 ? (
-                                        <option value="">No COs Defined</option>
-                                      ) : (
-                                        currentCourseOutcomes.map((co) => (
-                                          <option key={co.id} value={co.id}>
-                                            {co.code}
-                                          </option>
-                                        ))
-                                      )}
-                                    </select>
+                                    {canManageCourse ? (
+                                      <select
+                                        value={q.courseOutcomeId}
+                                        onChange={(e) => {
+                                          updateQuestion(q.id, { courseOutcomeId: e.target.value });
+                                          const matched = currentCourseOutcomes.find((c) => c.id === e.target.value);
+                                          showMsg(`Updated ${q.questionNumber} to ${matched?.code || 'CO'}`);
+                                        }}
+                                        className="bg-slate-950 border border-slate-700 text-indigo-300 font-mono font-bold text-xs rounded-lg px-2 py-1 focus:border-indigo-500 focus:outline-none cursor-pointer"
+                                      >
+                                        {currentCourseOutcomes.length === 0 ? (
+                                          <option value="">No COs Defined</option>
+                                        ) : (
+                                          currentCourseOutcomes.map((co) => (
+                                            <option key={co.id} value={co.id}>
+                                              {co.code}
+                                            </option>
+                                          ))
+                                        )}
+                                      </select>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-800 text-indigo-300 font-mono font-bold text-xs">
+                                        {matchedCo?.code || 'CO'}
+                                      </span>
+                                    )}
                                   </td>
 
-                                  {/* Bloom's Level (Direct Dropdown) */}
+                                  {/* Bloom's Level (Direct Dropdown if canManageCourse) */}
                                   <td className="px-4 py-2.5 text-center">
-                                    <select
-                                      value={q.bloomsLevel}
-                                      onChange={(e) => {
-                                        const bloom = e.target.value as BloomsTaxonomyLevel;
-                                        updateQuestion(q.id, { bloomsLevel: bloom });
-                                        showMsg(`Updated ${q.questionNumber} Bloom's to ${bloom}`);
-                                      }}
-                                      className="bg-slate-950 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg px-2 py-1 focus:border-indigo-500 focus:outline-none cursor-pointer"
-                                    >
-                                      <option value="REMEMBER">L1 - Remember</option>
-                                      <option value="UNDERSTAND">L2 - Understand</option>
-                                      <option value="APPLY">L3 - Apply</option>
-                                      <option value="ANALYZE">L4 - Analyze</option>
-                                      <option value="EVALUATE">L5 - Evaluate</option>
-                                      <option value="CREATE">L6 - Create</option>
-                                    </select>
+                                    {canManageCourse ? (
+                                      <select
+                                        value={q.bloomsLevel}
+                                        onChange={(e) => {
+                                          const bloom = e.target.value as BloomsTaxonomyLevel;
+                                          updateQuestion(q.id, { bloomsLevel: bloom });
+                                          showMsg(`Updated ${q.questionNumber} Bloom's to ${bloom}`);
+                                        }}
+                                        className="bg-slate-950 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg px-2 py-1 focus:border-indigo-500 focus:outline-none cursor-pointer"
+                                      >
+                                        <option value="REMEMBER">L1 - Remember</option>
+                                        <option value="UNDERSTAND">L2 - Understand</option>
+                                        <option value="APPLY">L3 - Apply</option>
+                                        <option value="ANALYZE">L4 - Analyze</option>
+                                        <option value="EVALUATE">L5 - Evaluate</option>
+                                        <option value="CREATE">L6 - Create</option>
+                                      </select>
+                                    ) : (
+                                      <span className="text-slate-300 text-xs font-semibold">
+                                        {q.bloomsLevel}
+                                      </span>
+                                    )}
                                   </td>
 
-                                  {/* Delete */}
-                                  <td className="px-4 py-2.5 text-right">
-                                    <button
-                                      onClick={() => {
-                                        if (confirm(`Delete ${q.questionNumber}?`)) {
-                                          deleteQuestion(q.id);
-                                          showMsg(`Deleted ${q.questionNumber}.`);
-                                        }
-                                      }}
-                                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                                      title="Delete Question"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </td>
+                                  {/* Delete (only if canManageCourse) */}
+                                  {canManageCourse && (
+                                    <td className="px-4 py-2.5 text-right">
+                                      <button
+                                        onClick={() => {
+                                          if (confirm(`Delete ${q.questionNumber}?`)) {
+                                            deleteQuestion(q.id);
+                                            showMsg(`Deleted ${q.questionNumber}.`);
+                                          }
+                                        }}
+                                        className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                                        title="Delete Question"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </td>
+                                  )}
                                 </tr>
                               );
                             })}
@@ -1157,29 +1225,31 @@ export const AssessmentQuestionsView: React.FC = () => {
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                const defCourseId = activeCourse?.id || courses[0]?.id || '';
-                const defSubs = scoringSubComponents.filter((s) => !s.courseId || s.courseId === defCourseId);
-                const defSec = courseSections.find((s) => s.courseId === defCourseId);
-                setWindowCourseId(defCourseId);
-                setWindowSubCompId(defSubs[0]?.id || '');
-                setWindowSectionId(defSec?.id || '');
-                setWindowFacultyId(defSec?.facultyId || '');
-                setOpenDate(new Date().toISOString().slice(0, 16));
-                setCloseDate(new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 16));
-                setExtendReason('');
-                setEditingWindowId(null);
-                setModalType('addWindow');
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Configure Assessment Window</span>
-            </button>
+            {(canUnlockOrExtendDeadline || canManageCourse) && (
+              <button
+                onClick={() => {
+                  const defCourseId = activeCourse?.id || courses[0]?.id || '';
+                  const defSubs = scoringSubComponents.filter((s) => !s.courseId || s.courseId === defCourseId);
+                  const defSec = courseSections.find((s) => s.courseId === defCourseId);
+                  setWindowCourseId(defCourseId);
+                  setWindowSubCompId(defSubs[0]?.id || '');
+                  setWindowSectionId(defSec?.id || '');
+                  setWindowFacultyId(defSec?.facultyId || '');
+                  setOpenDate(new Date().toISOString().slice(0, 16));
+                  setCloseDate(new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 16));
+                  setExtendReason('');
+                  setEditingWindowId(null);
+                  setModalType('addWindow');
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Configure Assessment Window</span>
+              </button>
+            )}
           </div>
 
-          {assessmentWindows.length === 0 ? (
+          {visibleAssessmentWindows.length === 0 ? (
             <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-12 text-center space-y-2">
               <Clock className="w-12 h-12 text-slate-600 mx-auto mb-2" />
               <h3 className="text-base font-bold text-white">No Assessment Windows Configured</h3>
@@ -1189,7 +1259,7 @@ export const AssessmentQuestionsView: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {assessmentWindows.map((win) => {
+              {visibleAssessmentWindows.map((win) => {
                 const isOverdue = new Date() > new Date(win.closeDateTime);
                 const section = courseSections.find((s) => s.id === win.sectionId);
                 const course = courses.find((c) => c.id === win.courseId);
@@ -1228,22 +1298,24 @@ export const AssessmentQuestionsView: React.FC = () => {
                       <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5">
                         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 flex items-center justify-between">
                           <span>Section &amp; Faculty Pair</span>
-                          <button
-                            onClick={() => {
-                              setWindowCourseId(win.courseId || activeCourse?.id || '');
-                              setWindowSubCompId(win.subComponentId);
-                              setWindowSectionId(win.sectionId);
-                              setWindowFacultyId(win.facultyId || section?.facultyId || '');
-                              setOpenDate(new Date(win.openDateTime).toISOString().slice(0, 16));
-                              setCloseDate(new Date(win.closeDateTime).toISOString().slice(0, 16));
-                              setExtendReason(win.unlockAuditReason || '');
-                              setEditingWindowId(win.id);
-                              setModalType('editWindow');
-                            }}
-                            className="text-indigo-400 hover:text-indigo-300 font-semibold normal-case text-[11px] underline"
-                          >
-                            Change Faculty
-                          </button>
+                          {(canUnlockOrExtendDeadline || canManageCourse) && (
+                            <button
+                              onClick={() => {
+                                setWindowCourseId(win.courseId || activeCourse?.id || '');
+                                setWindowSubCompId(win.subComponentId);
+                                setWindowSectionId(win.sectionId);
+                                setWindowFacultyId(win.facultyId || section?.facultyId || '');
+                                setOpenDate(new Date(win.openDateTime).toISOString().slice(0, 16));
+                                setCloseDate(new Date(win.closeDateTime).toISOString().slice(0, 16));
+                                setExtendReason(win.unlockAuditReason || '');
+                                setEditingWindowId(win.id);
+                                setModalType('editWindow');
+                              }}
+                              className="text-indigo-400 hover:text-indigo-300 font-semibold normal-case text-[11px] underline"
+                            >
+                              Change Faculty
+                            </button>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-800 text-indigo-300 font-bold font-mono text-xs">
@@ -1269,36 +1341,38 @@ export const AssessmentQuestionsView: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
-                      <button
-                        onClick={() => {
-                          setWindowCourseId(win.courseId || activeCourse?.id || '');
-                          setWindowSubCompId(win.subComponentId);
-                          setWindowSectionId(win.sectionId);
-                          setWindowFacultyId(win.facultyId || section?.facultyId || '');
-                          setOpenDate(new Date(win.openDateTime).toISOString().slice(0, 16));
-                          setCloseDate(new Date(win.closeDateTime).toISOString().slice(0, 16));
-                          setExtendReason(win.unlockAuditReason || '');
-                          setEditingWindowId(win.id);
-                          setModalType('editWindow');
-                        }}
-                        className="text-indigo-400 hover:underline font-semibold"
-                      >
-                        Extend Time &amp; Faculty
-                      </button>
+                    {(canUnlockOrExtendDeadline || canManageCourse) && (
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
+                        <button
+                          onClick={() => {
+                            setWindowCourseId(win.courseId || activeCourse?.id || '');
+                            setWindowSubCompId(win.subComponentId);
+                            setWindowSectionId(win.sectionId);
+                            setWindowFacultyId(win.facultyId || section?.facultyId || '');
+                            setOpenDate(new Date(win.openDateTime).toISOString().slice(0, 16));
+                            setCloseDate(new Date(win.closeDateTime).toISOString().slice(0, 16));
+                            setExtendReason(win.unlockAuditReason || '');
+                            setEditingWindowId(win.id);
+                            setModalType('editWindow');
+                          }}
+                          className="text-indigo-400 hover:underline font-semibold"
+                        >
+                          Extend Time &amp; Faculty
+                        </button>
 
-                      <button
-                        onClick={() => {
-                          if (confirm('Delete this assessment window?')) {
-                            deleteAssessmentWindow(win.id);
-                            showMsg('Assessment window deleted.');
-                          }
-                        }}
-                        className="text-slate-500 hover:text-rose-400"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                        <button
+                          onClick={() => {
+                            if (confirm('Delete this assessment window?')) {
+                              deleteAssessmentWindow(win.id);
+                              showMsg('Assessment window deleted.');
+                            }
+                          }}
+                          className="text-slate-500 hover:text-rose-400"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1320,20 +1394,22 @@ export const AssessmentQuestionsView: React.FC = () => {
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                if (!activeQuestionPaper || currentPaperSections.length === 0) {
-                  showMsg('Create sections in the active paper before saving as template.', 'error');
-                  return;
-                }
-                setNewTemplateName(`${activeQuestionPaper.title} Template`);
-                setModalType('saveAsTemplate');
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto"
-            >
-              <Copy className="w-4 h-4" />
-              <span>Save Current Paper as Template</span>
-            </button>
+            {canManageCourse && (
+              <button
+                onClick={() => {
+                  if (!activeQuestionPaper || currentPaperSections.length === 0) {
+                    showMsg('Create sections in the active paper before saving as template.', 'error');
+                    return;
+                  }
+                  setNewTemplateName(`${activeQuestionPaper.title} Template`);
+                  setModalType('saveAsTemplate');
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto"
+              >
+                <Copy className="w-4 h-4" />
+                <span>Save Current Paper as Template</span>
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1347,17 +1423,19 @@ export const AssessmentQuestionsView: React.FC = () => {
                     <span className="text-[10px] bg-indigo-950 border border-indigo-800 text-indigo-300 px-2 py-0.5 rounded font-mono font-bold">
                       {tpl.totalMarks} Marks
                     </span>
-                    <button
-                      onClick={() => {
-                        if (confirm(`Delete template "${tpl.name}"?`)) {
-                          deleteQuestionPaperTemplate(tpl.id);
-                          showMsg('Template deleted.');
-                        }
-                      }}
-                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {canManageCourse && (
+                      <button
+                        onClick={() => {
+                          if (confirm(`Delete template "${tpl.name}"?`)) {
+                            deleteQuestionPaperTemplate(tpl.id);
+                            showMsg('Template deleted.');
+                          }
+                        }}
+                        className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
 
                   <h3 className="text-sm font-bold text-white mb-1">{tpl.name}</h3>
@@ -1377,18 +1455,24 @@ export const AssessmentQuestionsView: React.FC = () => {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => {
-                    if (!activeQuestionPaper) return;
-                    applyQuestionPaperTemplate(tpl.id, activeQuestionPaper.id, currentCourseOutcomes[0]?.id);
-                    showMsg(`Applied template "${tpl.name}" to ${activeQuestionPaper.title}.`);
-                    setSubTab('designer');
-                  }}
-                  className="w-full py-2 px-3 bg-slate-800 hover:bg-indigo-600 hover:text-white text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Apply to Active Paper</span>
-                </button>
+                {canManageCourse ? (
+                  <button
+                    onClick={() => {
+                      if (!activeQuestionPaper) return;
+                      applyQuestionPaperTemplate(tpl.id, activeQuestionPaper.id, currentCourseOutcomes[0]?.id);
+                      showMsg(`Applied template "${tpl.name}" to ${activeQuestionPaper.title}.`);
+                      setSubTab('designer');
+                    }}
+                    className="w-full py-2 px-3 bg-slate-800 hover:bg-indigo-600 hover:text-white text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Apply to Active Paper</span>
+                  </button>
+                ) : (
+                  <div className="text-center py-2 text-[11px] text-slate-500 italic">
+                    Governed blueprint template
+                  </div>
+                )}
               </div>
             ))}
           </div>

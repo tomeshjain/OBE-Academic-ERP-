@@ -19,6 +19,7 @@ import {
   BookOpen,
   ArrowUpRight,
   FileSpreadsheet,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const ScoringComponentsView: React.FC = () => {
@@ -40,9 +41,12 @@ export const ScoringComponentsView: React.FC = () => {
     getOrCreateQuestionPaperForSubComponent,
     activeSubTab,
     setActiveSubTab,
+    academicScope,
   } = useApp();
 
-  const activeCourse = courses.find((c) => c.id === activeCourseId) || courses[0] || null;
+  const displayedCourses = academicScope.visibleCourses;
+  const activeCourse = displayedCourses.find((c) => c.id === activeCourseId) || displayedCourses[0] || null;
+  const canManageCourse = academicScope.canManageCourse(activeCourse?.id);
 
   const [subTab, setSubTab] = useState<'schemes' | 'subcomponents'>(
     (['schemes', 'subcomponents'].includes(activeSubTab) ? (activeSubTab as any) : 'schemes')
@@ -94,6 +98,10 @@ export const ScoringComponentsView: React.FC = () => {
   );
 
   const openAddScheme = () => {
+    if (!canManageCourse) {
+      showMsg('Unauthorized: Only Course Coordinators and Heads can create scoring schemes.', 'error');
+      return;
+    }
     if (!activeCourse) {
       showMsg('Please create or select a Course first.', 'error');
       return;
@@ -107,6 +115,7 @@ export const ScoringComponentsView: React.FC = () => {
   };
 
   const openEditScheme = (s: ScoringScheme) => {
+    if (!canManageCourse) return;
     setSchemeCode(s.code);
     setSchemeName(s.name);
     setCieWeight(s.cieWeight);
@@ -116,6 +125,10 @@ export const ScoringComponentsView: React.FC = () => {
   };
 
   const openAddSubComp = () => {
+    if (!canManageCourse) {
+      showMsg('Unauthorized: Only Course Coordinators and Heads can add sub-components.', 'error');
+      return;
+    }
     if (!activeCourse) {
       showMsg('Please select a Course first.', 'error');
       return;
@@ -130,6 +143,7 @@ export const ScoringComponentsView: React.FC = () => {
   };
 
   const openEditSubComp = (sub: ScoringSubComponent) => {
+    if (!canManageCourse) return;
     setSelectedSchemeId(sub.schemeId);
     setSubCompName(sub.name);
     setSubCompType(sub.type);
@@ -146,7 +160,7 @@ export const ScoringComponentsView: React.FC = () => {
 
   const handleSaveScheme = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!schemeCode.trim() || !schemeName.trim() || !activeCourse) return;
+    if (!canManageCourse || !schemeCode.trim() || !schemeName.trim() || !activeCourse) return;
 
     if (Number(cieWeight) + Number(seeWeight) !== 100) {
       showMsg('CIE Weight and SEE Weight must sum to 100%.', 'error');
@@ -176,7 +190,7 @@ export const ScoringComponentsView: React.FC = () => {
 
   const handleSaveSubComp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subCompName.trim() || !activeCourse) return;
+    if (!canManageCourse || !subCompName.trim() || !activeCourse) return;
 
     if (modalType === 'addSubComp') {
       addScoringSubComponent({
@@ -303,22 +317,29 @@ export const ScoringComponentsView: React.FC = () => {
                 Split of Continuous Internal Evaluation (CIE) vs Semester End Exam (SEE) for this course.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowBulkModal('schemes')}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload CSV</span>
-              </button>
-              <button
-                onClick={openAddScheme}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Scoring Scheme</span>
-              </button>
-            </div>
+            {canManageCourse ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowBulkModal('schemes')}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Upload CSV</span>
+                </button>
+                <button
+                  onClick={openAddScheme}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Scoring Scheme</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-amber-400">
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                <span>Managed by Course Coordinator</span>
+              </div>
+            )}
           </div>
 
           {currentCourseSchemes.length === 0 ? (
@@ -343,25 +364,27 @@ export const ScoringComponentsView: React.FC = () => {
                       </span>
                       <h3 className="text-sm font-bold text-white mt-1.5">{scheme.name}</h3>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openEditScheme(scheme)}
-                        className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete scoring scheme ${scheme.code}?`)) {
-                            deleteScoringScheme(scheme.id);
-                            showMsg(`Deleted scheme ${scheme.code}.`);
-                          }
-                        }}
-                        className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {canManageCourse && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openEditScheme(scheme)}
+                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete scoring scheme ${scheme.code}?`)) {
+                              deleteScoringScheme(scheme.id);
+                              showMsg(`Deleted scheme ${scheme.code}.`);
+                            }
+                          }}
+                          className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Visual Weight Bar */}
@@ -405,22 +428,29 @@ export const ScoringComponentsView: React.FC = () => {
                 Discrete evaluation events (CIE-1, CIE-2, Lab Test, Assignments). Each sub-component is linked to a dedicated Question Paper.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowBulkModal('subcomponents')}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload CSV</span>
-              </button>
-              <button
-                onClick={openAddSubComp}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Sub-Component</span>
-              </button>
-            </div>
+            {canManageCourse ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowBulkModal('subcomponents')}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Upload CSV</span>
+                </button>
+                <button
+                  onClick={openAddSubComp}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Sub-Component</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-amber-400">
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                <span>Managed by Course Coordinator</span>
+              </div>
+            )}
           </div>
 
           {currentCourseSubComponents.length === 0 ? (
@@ -428,7 +458,9 @@ export const ScoringComponentsView: React.FC = () => {
               <Layers className="w-12 h-12 text-slate-600 mx-auto mb-3" />
               <h3 className="text-base font-semibold text-white">No Sub-Components for {activeCourse?.code}</h3>
               <p className="text-slate-400 text-xs mt-1 max-w-md mx-auto">
-                Click "Add Sub-Component" above to add CIE-1, CIE-2, or Semester End Exam. A Question Paper is automatically generated for each one.
+                {canManageCourse
+                  ? 'Click "Add Sub-Component" above to add CIE-1, CIE-2, or Semester End Exam. A Question Paper is automatically generated for each one.'
+                  : 'Sub-components have not yet been configured by the Course Coordinator for this course.'}
               </p>
             </div>
           ) : (
@@ -459,25 +491,29 @@ export const ScoringComponentsView: React.FC = () => {
                         <h3 className="text-sm font-bold text-white leading-snug">{sub.name}</h3>
                       </div>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEditSubComp(sub)}
-                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete sub-component ${sub.name}?`)) {
-                              deleteScoringSubComponent(sub.id);
-                              showMsg(`Deleted sub-component ${sub.name}.`);
-                            }
-                          }}
-                          className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {canManageCourse && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEditSubComp(sub)}
+                            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                            title="Edit Sub-Component"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete sub-component ${sub.name}?`)) {
+                                deleteScoringSubComponent(sub.id);
+                                showMsg(`Deleted sub-component ${sub.name}.`);
+                              }
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                            title="Delete Sub-Component"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-xs text-slate-400 space-y-1">

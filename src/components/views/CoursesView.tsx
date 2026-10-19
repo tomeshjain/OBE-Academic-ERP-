@@ -34,6 +34,7 @@ import {
   CheckSquare,
   Square,
   GraduationCap,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const CoursesView: React.FC = () => {
@@ -75,6 +76,7 @@ export const CoursesView: React.FC = () => {
     deleteStudent,
     activeSubTab,
     setActiveSubTab,
+    academicScope,
   } = useApp();
 
   const [subTab, setSubTab] = useState<'catalog' | 'enrollment' | 'sections' | 'cos' | 'matrix'>(
@@ -97,7 +99,10 @@ export const CoursesView: React.FC = () => {
   const [showBulkModal, setShowBulkModal] = useState<'courses' | 'sections' | 'cos' | 'students' | null>(null);
   const [selectedProgramFilter, setSelectedProgramFilter] = useState<string>('ALL');
 
-  const activeCourse = courses.find((c) => c.id === activeCourseId) || courses[0] || null;
+  const displayedCourses = academicScope.visibleCourses;
+  const activeCourse = displayedCourses.find((c) => c.id === activeCourseId) || displayedCourses[0] || null;
+  const canCreateCourse = academicScope.canCreateCourse;
+  const canManageCourse = academicScope.canManageCourse(activeCourse?.id);
 
   // Active Program for PO mapping - dynamically resolved based on the course's program!
   const courseProgram =
@@ -217,6 +222,10 @@ export const CoursesView: React.FC = () => {
 
   // Open modals
   const openAddCourse = () => {
+    if (!canCreateCourse) {
+      showMsg('Access Restricted: Only Admin, Head of Faculty, Head of School, or HOD can create new courses.', 'error');
+      return;
+    }
     setCourseProgramId(
       selectedProgramFilter !== 'ALL' ? selectedProgramFilter : programs[0]?.id || ''
     );
@@ -236,6 +245,10 @@ export const CoursesView: React.FC = () => {
   };
 
   const openEditCourse = (c: CourseRecord) => {
+    if (!academicScope.canManageCourse(c.id)) {
+      showMsg('Access Restricted: Course configuration can only be edited by the Course Coordinator or HOD/Admin.', 'error');
+      return;
+    }
     setCourseProgramId(c.programId || programs[0]?.id || '');
     setCourseCode(c.code);
     setCourseTitle(c.title);
@@ -253,6 +266,10 @@ export const CoursesView: React.FC = () => {
   };
 
   const openAddSection = () => {
+    if (!canManageCourse) {
+      showMsg('Access Restricted: Only the Course Coordinator or HOD/Admin can add course sections.', 'error');
+      return;
+    }
     if (!activeCourse) {
       showMsg('Please select a course first.', 'error');
       return;
@@ -266,6 +283,10 @@ export const CoursesView: React.FC = () => {
   };
 
   const openEditSection = (sec: CourseSection) => {
+    if (!canManageCourse) {
+      showMsg('Access Restricted: Section configuration can only be edited by the Course Coordinator or HOD/Admin.', 'error');
+      return;
+    }
     setSectionName(sec.name);
     setFacultyId(sec.facultyId || '');
     setAcademicYear(sec.academicYear || '2026-2027');
@@ -274,6 +295,10 @@ export const CoursesView: React.FC = () => {
   };
 
   const openAssignStudentsModal = (sec: CourseSection) => {
+    if (!canManageCourse) {
+      showMsg('Access Restricted: Student section assignment can only be modified by the Course Coordinator or HOD/Admin.', 'error');
+      return;
+    }
     setTargetSectionForStudents(sec);
     const currentlyInSec = students.filter((s) => s.sectionId === sec.id).map((s) => s.id);
     setSelectedStudentIds(currentlyInSec);
@@ -281,6 +306,10 @@ export const CoursesView: React.FC = () => {
   };
 
   const openEnrollStudent = () => {
+    if (!canManageCourse) {
+      showMsg('Access Restricted: Only the Course Coordinator or HOD/Admin can enroll students into the course.', 'error');
+      return;
+    }
     if (!activeCourse) {
       showMsg('Please select a Course first.', 'error');
       return;
@@ -340,6 +369,10 @@ export const CoursesView: React.FC = () => {
   };
 
   const openAddCO = () => {
+    if (!canManageCourse) {
+      showMsg('Access Restricted: Course Outcomes can only be configured by the Course Coordinator or HOD/Admin.', 'error');
+      return;
+    }
     if (!activeCourse) {
       showMsg('Please select or create a Course first.', 'error');
       return;
@@ -352,6 +385,10 @@ export const CoursesView: React.FC = () => {
   };
 
   const openEditCO = (co: CourseOutcomeItem) => {
+    if (!canManageCourse) {
+      showMsg('Access Restricted: Course Outcomes can only be edited by the Course Coordinator or HOD/Admin.', 'error');
+      return;
+    }
     setCoCode(co.code);
     setCoStatement(co.statement);
     setCoBloom(co.bloomsLevel);
@@ -575,7 +612,7 @@ export const CoursesView: React.FC = () => {
         </div>
 
         {/* Active Course Selector & Metadata */}
-        {courses.length > 0 && (
+        {displayedCourses.length > 0 && (
           <div className="mt-3.5 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5">
               <span className="text-slate-400 font-semibold uppercase text-[10px]">
@@ -586,7 +623,7 @@ export const CoursesView: React.FC = () => {
                 onChange={(e) => setActiveCourseId(e.target.value)}
                 className="bg-slate-950 border border-slate-700 text-white font-bold rounded-lg px-2.5 py-1 focus:border-indigo-500 focus:outline-none"
               >
-                {courses.map((c) => (
+                {displayedCourses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.code} - {c.title} ({c.credits} Credits)
                   </option>
@@ -638,52 +675,59 @@ export const CoursesView: React.FC = () => {
                     className="bg-transparent text-purple-300 font-bold focus:outline-none cursor-pointer"
                   >
                     <option value="ALL" className="bg-slate-900 text-white">
-                      All Programs ({courses.length})
+                      All Programs ({displayedCourses.length})
                     </option>
                     {programs.map((p) => (
                       <option key={p.id} value={p.id} className="bg-slate-900 text-white">
-                        {p.code} ({courses.filter((c) => c.programId === p.id).length})
+                        {p.code} ({displayedCourses.filter((c) => c.programId === p.id).length})
                       </option>
                     ))}
                   </select>
                 </div>
               )}
 
-              <button
-                onClick={() => setShowBulkModal('courses')}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload CSV</span>
-              </button>
-              <button
-                onClick={openAddCourse}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Course</span>
-              </button>
+              {canCreateCourse && (
+                <>
+                  <button
+                    onClick={() => setShowBulkModal('courses')}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Bulk Upload CSV</span>
+                  </button>
+                  <button
+                    onClick={openAddCourse}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Course</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
-          {courses.length === 0 ? (
+          {displayedCourses.length === 0 ? (
             <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-12 text-center">
               <BookOpen className="w-12 h-12 text-slate-600 mx-auto mb-3" />
               <h3 className="text-base font-semibold text-white">No Courses Defined</h3>
               <p className="text-slate-400 text-xs mt-1 max-w-md mx-auto">
-                Click "Add Course" above to register courses for the 2026 Batch cohort.
+                {canCreateCourse
+                  ? 'Click "Add Course" above to register courses for the 2026 Batch cohort.'
+                  : 'No course is currently mapped to your scope.'}
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {(selectedProgramFilter === 'ALL'
-                ? courses
-                : courses.filter((c) => c.programId === selectedProgramFilter)
+                ? displayedCourses
+                : displayedCourses.filter((c) => c.programId === selectedProgramFilter)
               ).map((course) => {
                 const isSelected = activeCourse?.id === course.id;
                 const coCount = courseOutcomes.filter((co) => co.courseId === course.id).length;
                 const secCount = courseSections.filter((s) => s.courseId === course.id).length;
                 const courseProg = programs.find((p) => p.id === course.programId);
+                const canManageThis = academicScope.canManageCourse(course.id);
 
                 return (
                   <div
@@ -706,25 +750,29 @@ export const CoursesView: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => openEditCourse(course)}
-                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete course ${course.code} - ${course.title}?`)) {
-                              deleteCourse(course.id);
-                              showMsg(`Deleted course ${course.code}.`);
-                            }
-                          }}
-                          className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {canManageThis && (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => openEditCourse(course)}
+                            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                            title="Edit Course"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete course ${course.code} - ${course.title}?`)) {
+                                deleteCourse(course.id);
+                                showMsg(`Deleted course ${course.code}.`);
+                              }
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                            title="Delete Course"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <h3 className="text-sm font-bold text-white mb-2 leading-snug">
@@ -793,22 +841,24 @@ export const CoursesView: React.FC = () => {
                 Enroll students directly into <strong>{activeCourse?.code} - {activeCourse?.title}</strong> and allocate them to faculty-mapped course sections.
               </p>
             </div>
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <button
-                onClick={() => setShowBulkModal('students')}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload Enrollment (CSV)</span>
-              </button>
-              <button
-                onClick={openEnrollStudent}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Enroll Student</span>
-              </button>
-            </div>
+            {canManageCourse && (
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={() => setShowBulkModal('students')}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Upload Enrollment (CSV)</span>
+                </button>
+                <button
+                  onClick={openEnrollStudent}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Enroll Student</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Metric Summary Cards */}
@@ -901,23 +951,29 @@ export const CoursesView: React.FC = () => {
                           <td className="px-4 py-3 font-medium text-slate-200">{stu.studentName}</td>
                           <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">{activeCourse?.code}</td>
                           <td className="px-4 py-3">
-                            <select
-                              value={stu.sectionId || ''}
-                              onChange={(e) => {
-                                const newSecId = e.target.value;
-                                updateStudent(stu.id, { sectionId: newSecId || undefined });
-                                const secObj = currentCourseSections.find((s) => s.id === newSecId);
-                                showMsg(`Assigned ${stu.studentName} to ${secObj ? secObj.name : 'Unassigned'}.`);
-                              }}
-                              className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-lg px-2 py-1 focus:border-indigo-500 focus:outline-none cursor-pointer"
-                            >
-                              <option value="">-- Unassigned Section --</option>
-                              {currentCourseSections.map((sec) => (
-                                <option key={sec.id} value={sec.id}>
-                                  {sec.name} &bull; Faculty: {sec.facultyName || 'Unassigned'}
-                                </option>
-                              ))}
-                            </select>
+                            {canManageCourse ? (
+                              <select
+                                value={stu.sectionId || ''}
+                                onChange={(e) => {
+                                  const newSecId = e.target.value;
+                                  updateStudent(stu.id, { sectionId: newSecId || undefined });
+                                  const secObj = currentCourseSections.find((s) => s.id === newSecId);
+                                  showMsg(`Assigned ${stu.studentName} to ${secObj ? secObj.name : 'Unassigned'}.`);
+                                }}
+                                className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-lg px-2 py-1 focus:border-indigo-500 focus:outline-none cursor-pointer"
+                              >
+                                <option value="">-- Unassigned Section --</option>
+                                {currentCourseSections.map((sec) => (
+                                  <option key={sec.id} value={sec.id}>
+                                    {sec.name} &bull; Faculty: {sec.facultyName || 'Unassigned'}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="font-semibold text-slate-300">
+                                {currentCourseSections.find((s) => s.id === stu.sectionId)?.name || 'Unassigned'}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">
@@ -925,18 +981,22 @@ export const CoursesView: React.FC = () => {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <button
-                              onClick={() => {
-                                if (confirm(`Remove ${stu.studentName} (${stu.rollNumber}) from ${activeCourse?.code}?`)) {
-                                  deleteStudent(stu.id);
-                                  showMsg(`Removed ${stu.studentName}.`);
-                                }
-                              }}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                              title="Drop / Remove Student"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {canManageCourse ? (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Remove ${stu.studentName} (${stu.rollNumber}) from ${activeCourse?.code}?`)) {
+                                    deleteStudent(stu.id);
+                                    showMsg(`Removed ${stu.studentName}.`);
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                                title="Drop / Remove Student"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-500 italic">Read-only</span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -961,22 +1021,24 @@ export const CoursesView: React.FC = () => {
                 Group enrolled students into sections and assign course faculty with mark-entry authorization.
               </p>
             </div>
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <button
-                onClick={() => setShowBulkModal('sections')}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bulk Upload Sections</span>
-              </button>
-              <button
-                onClick={openAddSection}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Section</span>
-              </button>
-            </div>
+            {canManageCourse && (
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={() => setShowBulkModal('sections')}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Bulk Upload Sections</span>
+                </button>
+                <button
+                  onClick={openAddSection}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Section</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {currentCourseSections.length === 0 ? (
@@ -1011,27 +1073,29 @@ export const CoursesView: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEditSection(sec)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-                          title="Edit Section & Faculty"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete ${sec.name}?`)) {
-                              deleteCourseSection(sec.id);
-                              showMsg(`Deleted ${sec.name}.`);
-                            }
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                          title="Delete Section"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {canManageCourse && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEditSection(sec)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                            title="Edit Section & Faculty"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete ${sec.name}?`)) {
+                                deleteCourseSection(sec.id);
+                                showMsg(`Deleted ${sec.name}.`);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                            title="Delete Section"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Assigned Students Summary */}
@@ -1042,12 +1106,14 @@ export const CoursesView: React.FC = () => {
                           Grouped Students: <strong className="text-white">{assignedStudents.length}</strong>
                         </span>
                       </div>
-                      <button
-                        onClick={() => openAssignStudentsModal(sec)}
-                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-semibold transition-colors"
-                      >
-                        Group / Manage Students
-                      </button>
+                      {canManageCourse && (
+                        <button
+                          onClick={() => openAssignStudentsModal(sec)}
+                          className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-semibold transition-colors"
+                        >
+                          Group / Manage Students
+                        </button>
+                      )}
                     </div>
 
                     {assignedStudents.length > 0 && (
@@ -1080,27 +1146,31 @@ export const CoursesView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <input
-                ref={coExcelInputRef}
-                type="file"
-                accept=".xlsx, .xls"
-                className="hidden"
-                onChange={handleExcelUpload}
-              />
-              <button
-                onClick={downloadCourseOutcomesTemplate}
-                className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700"
-              >
-                <Download className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Template</span>
-              </button>
-              <button
-                onClick={() => coExcelInputRef.current?.click()}
-                className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700"
-              >
-                <Upload className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Upload Excel</span>
-              </button>
+              {canManageCourse && (
+                <>
+                  <input
+                    ref={coExcelInputRef}
+                    type="file"
+                    accept=".xlsx, .xls"
+                    className="hidden"
+                    onChange={handleExcelUpload}
+                  />
+                  <button
+                    onClick={downloadCourseOutcomesTemplate}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700"
+                  >
+                    <Download className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Template</span>
+                  </button>
+                  <button
+                    onClick={() => coExcelInputRef.current?.click()}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Upload Excel</span>
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => exportCourseOutcomesToExcel(currentCourseOutcomes)}
                 className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700"
@@ -1108,29 +1178,49 @@ export const CoursesView: React.FC = () => {
                 <FileSpreadsheet className="w-3.5 h-3.5 text-teal-400" />
                 <span>Export</span>
               </button>
-              <button
-                onClick={() => setShowBulkModal('cos')}
-                className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-xs font-medium border border-slate-700"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Upload CSV</span>
-              </button>
-              <button
-                onClick={openAddCO}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-sm"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add CO</span>
-              </button>
+              {canManageCourse && (
+                <>
+                  <button
+                    onClick={() => setShowBulkModal('cos')}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-lg text-xs font-medium border border-slate-700"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Upload CSV</span>
+                  </button>
+                  <button
+                    onClick={openAddCO}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add CO</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
+
+          {!canManageCourse && (
+            <div className="bg-indigo-950/40 border border-indigo-800/80 rounded-2xl p-4 flex items-center justify-between text-xs text-indigo-200">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0" />
+                <div>
+                  <span className="font-bold text-white">Course Outcomes Governance</span>
+                  <p className="text-indigo-300/90 text-[11px] mt-0.5">
+                    Course Outcomes (COs) and articulation are defined and governed by the Course Coordinator ({activeCourse?.coordinator || 'Assigned Lead'}). Section faculty has read-only visibility.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {currentCourseOutcomes.length === 0 ? (
             <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-12 text-center">
               <Target className="w-12 h-12 text-slate-600 mx-auto mb-3" />
               <h3 className="text-base font-semibold text-white">No Course Outcomes Configured</h3>
               <p className="text-slate-400 text-xs mt-1 max-w-md mx-auto">
-                Click "Add CO" above or upload an Excel template to define outcomes for {activeCourse?.code}.
+                {canManageCourse
+                  ? `Click "Add CO" above or upload an Excel template to define outcomes for ${activeCourse?.code}.`
+                  : 'No course outcomes are configured for this course yet.'}
               </p>
             </div>
           ) : (
@@ -1141,7 +1231,7 @@ export const CoursesView: React.FC = () => {
                     <th className="px-4 py-3 w-20">Code</th>
                     <th className="px-4 py-3">Course Outcome Statement</th>
                     <th className="px-4 py-3 w-32">Bloom's Level</th>
-                    <th className="px-4 py-3 w-24 text-right">Actions</th>
+                    {canManageCourse && <th className="px-4 py-3 w-24 text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-slate-300">
@@ -1154,27 +1244,31 @@ export const CoursesView: React.FC = () => {
                           {co.bloomsLevel}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => openEditCO(co)}
-                            className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete ${co.code}?`)) {
-                                deleteCourseOutcome(co.id);
-                                showMsg(`Deleted ${co.code}.`);
-                              }
-                            }}
-                            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                      {canManageCourse && (
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openEditCO(co)}
+                              className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800"
+                              title="Edit CO"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete ${co.code}?`)) {
+                                  deleteCourseOutcome(co.id);
+                                  showMsg(`Deleted ${co.code}.`);
+                                }
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                              title="Delete CO"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1193,58 +1287,67 @@ export const CoursesView: React.FC = () => {
                 CO-PO / PSO Articulation Matrix ({activeCourse?.code})
               </h2>
               <p className="text-xs text-slate-400">
-                1-Click mapping: Click any cell to cycle correlation (— &rarr; 1: Slight &rarr; 2: Moderate &rarr; 3: Substantial). Zero popups required.
+                {canManageCourse
+                  ? '1-Click mapping: Click any cell to cycle correlation (— → 1: Slight → 2: Moderate → 3: Substantial). Zero popups required.'
+                  : 'Read-only view: You can inspect correlations. Only the Course Coordinator or Department Head can edit this matrix.'}
               </p>
             </div>
 
             {/* Quick Presets Toolbar */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
-                Quick Presets:
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  currentCourseOutcomes.forEach((co) => {
-                    currentProgramPos.forEach((po) => {
-                      updateCoPoMapping(co.id, po.id, 2);
+            {canManageCourse ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                  Quick Presets:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    currentCourseOutcomes.forEach((co) => {
+                      currentProgramPos.forEach((po) => {
+                        updateCoPoMapping(co.id, po.id, 2);
+                      });
                     });
-                  });
-                  showMsg('Set all matrix correlations to 2 (Moderate).');
-                }}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-indigo-900/40 text-indigo-300 rounded-lg text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                Set All 2 (Moderate)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  currentCourseOutcomes.forEach((co) => {
-                    currentProgramPos.forEach((po) => {
-                      updateCoPoMapping(co.id, po.id, 3);
+                    showMsg('Set all matrix correlations to 2 (Moderate).');
+                  }}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-indigo-900/40 text-indigo-300 rounded-lg text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  Set All 2 (Moderate)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    currentCourseOutcomes.forEach((co) => {
+                      currentProgramPos.forEach((po) => {
+                        updateCoPoMapping(co.id, po.id, 3);
+                      });
                     });
-                  });
-                  showMsg('Set all matrix correlations to 3 (Substantial).');
-                }}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-emerald-900/40 text-emerald-300 rounded-lg text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                Set All 3 (Substantial)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  currentCourseOutcomes.forEach((co) => {
-                    currentProgramPos.forEach((po) => {
-                      updateCoPoMapping(co.id, po.id, 0);
+                    showMsg('Set all matrix correlations to 3 (Substantial).');
+                  }}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-emerald-900/40 text-emerald-300 rounded-lg text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  Set All 3 (Substantial)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    currentCourseOutcomes.forEach((co) => {
+                      currentProgramPos.forEach((po) => {
+                        updateCoPoMapping(co.id, po.id, 0);
+                      });
                     });
-                  });
-                  showMsg('Cleared all matrix correlations.');
-                }}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-xs font-semibold border border-slate-700 transition-colors"
-              >
-                Clear All (—)
-              </button>
-            </div>
+                    showMsg('Cleared all matrix correlations.');
+                  }}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-xs font-semibold border border-slate-700 transition-colors"
+                >
+                  Clear All (—)
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/80 border border-slate-800 rounded-xl text-xs text-amber-400">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span>Governed Matrix (Managed by Course Coordinator)</span>
+              </div>
+            )}
           </div>
 
           {currentCourseOutcomes.length === 0 || currentProgramPos.length === 0 ? (
@@ -1282,11 +1385,14 @@ export const CoursesView: React.FC = () => {
                             <td
                               key={po.id}
                               onClick={() => {
+                                if (!canManageCourse) return;
                                 const nextLevel = (level + 1) % 4; // 0 -> 1 -> 2 -> 3 -> 0
                                 updateCoPoMapping(co.id, po.id, nextLevel, record?.justification);
                               }}
-                              title="Click to cycle: 0 -> 1 -> 2 -> 3 -> 0"
-                              className={`px-3 py-3 text-center border-l border-slate-800 cursor-pointer font-bold select-none transition-all ${
+                              title={canManageCourse ? 'Click to cycle: 0 -> 1 -> 2 -> 3 -> 0' : 'Read-only: Managed by Course Coordinator'}
+                              className={`px-3 py-3 text-center border-l border-slate-800 font-bold select-none transition-all ${
+                                canManageCourse ? 'cursor-pointer' : 'cursor-not-allowed opacity-90'
+                              } ${
                                 level === 3
                                   ? 'bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/60 shadow-inner'
                                   : level === 2

@@ -33,6 +33,7 @@ import {
   Calendar,
   AlertCircle,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   downloadStudentRosterTemplate,
@@ -71,6 +72,7 @@ export const MarkEntryView: React.FC = () => {
     currentUser,
     activeSubTab: globalSubTab,
     setActiveSubTab: setGlobalSubTab,
+    academicScope,
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'matrix' | 'roster'>(
@@ -92,13 +94,20 @@ export const MarkEntryView: React.FC = () => {
   const [selectedSectionFilter, setSelectedSectionFilter] = useState<string>('ALL');
   const [extendFacultyId, setExtendFacultyId] = useState('');
 
-  const activeCourse = courses.find((c) => c.id === activeCourseId) || courses[0] || null;
+  const displayedCourses = academicScope.visibleCourses;
+  const activeCourse = displayedCourses.find((c) => c.id === activeCourseId) || displayedCourses[0] || null;
+  const canManageCourse = academicScope.canManageCourse(activeCourse?.id);
+  const canUnlockOrExtendDeadline = academicScope.canUnlockOrExtendDeadline;
 
-  // Sections of the active course
+  // Sections of the active course - scoped to assigned section for Section Faculty!
   const currentCourseSections = useMemo(() => {
     if (!activeCourse) return [];
+    if (academicScope.isFaculty && !academicScope.isCoordinator && !academicScope.isHod && !academicScope.isAdmin) {
+      const facultySections = academicScope.mappedSections.filter((s) => s.courseId === activeCourse.id);
+      return facultySections.length > 0 ? facultySections : courseSections.filter((s) => s.courseId === activeCourse.id);
+    }
     return courseSections.filter((s) => s.courseId === activeCourse.id);
-  }, [courseSections, activeCourse]);
+  }, [courseSections, activeCourse, academicScope]);
 
   const activeSection = useMemo(() => {
     return (
@@ -143,10 +152,7 @@ export const MarkEntryView: React.FC = () => {
     currentWindow?.status === 'FROZEN' ||
     isDeadlinePassed;
 
-  const canEditMarks =
-    !isWindowLocked ||
-    currentUserRole === 'TENANT_ADMIN' ||
-    currentUserRole === 'HOD';
+  const canEditMarks = academicScope.canEditMarksForSection(activeSection?.id, isWindowLocked);
 
   // Filtered Students
   const filteredStudents = useMemo(() => {
@@ -157,12 +163,14 @@ export const MarkEntryView: React.FC = () => {
       const matchesStatus =
         filterStatus === 'ALL' || s.enrollmentStatus === filterStatus;
       const matchesSection =
-        selectedSectionFilter === 'ALL' || s.sectionId === selectedSectionFilter;
+        selectedSectionFilter === 'ALL'
+          ? (activeSection ? s.sectionId === activeSection.id : true)
+          : s.sectionId === selectedSectionFilter;
       const matchesCourse =
         !s.courseId || s.courseId === activeCourse?.id;
       return matchesSearch && matchesStatus && matchesSection && matchesCourse;
     });
-  }, [students, searchQuery, filterStatus, selectedSectionFilter, activeCourse]);
+  }, [students, searchQuery, filterStatus, selectedSectionFilter, activeCourse, activeSection]);
 
   // Modals state
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -673,7 +681,7 @@ export const MarkEntryView: React.FC = () => {
                     <span>{isDeadlinePassed ? 'DEADLINE EXPIRED' : currentWindow.status}</span>
                   </span>
 
-                  {(currentUserRole === 'TENANT_ADMIN' || currentUserRole === 'HOD') && (
+                  {canUnlockOrExtendDeadline && (
                     <div className="flex items-center gap-1">
                       <button
                         onClick={handleToggleLock}
@@ -1104,13 +1112,25 @@ export const MarkEntryView: React.FC = () => {
                 <span>Export</span>
               </button>
 
-              <button
-                onClick={() => handleOpenStudentModal()}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
-              >
-                <PlusCircle className="w-3.5 h-3.5" />
-                <span>Add Student</span>
-              </button>
+              {canManageCourse && (
+                <>
+                  <button
+                    onClick={() => rosterExcelRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Upload Excel</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenStudentModal()}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>Add Student</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -1161,20 +1181,26 @@ export const MarkEntryView: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleOpenStudentModal(stu)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                              title="Edit Student"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteStudent(stu)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                              title="Delete Student"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {canManageCourse ? (
+                              <>
+                                <button
+                                  onClick={() => handleOpenStudentModal(stu)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                  title="Edit Student"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteStudent(stu)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                                  title="Delete Student"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-slate-600 text-[11px] italic">Managed by Coordinator</span>
+                            )}
                           </div>
                         </td>
                       </tr>

@@ -38,6 +38,7 @@ export const ProgramsAndOutcomesView: React.FC = () => {
     regulations,
     activeSubTab,
     setActiveSubTab,
+    academicScope,
   } = useApp();
 
   const [subTab, setSubTab] = useState<'programs' | 'pos' | 'psos'>(
@@ -57,7 +58,8 @@ export const ProgramsAndOutcomesView: React.FC = () => {
 
   const [showBulkModal, setShowBulkModal] = useState<'programs' | 'pos' | 'psos' | null>(null);
 
-  const activeProgram = programs.find((p) => p.id === activeProgramId) || programs[0] || null;
+  const displayedPrograms = academicScope.visiblePrograms;
+  const activeProgram = displayedPrograms.find((p) => p.id === activeProgramId) || displayedPrograms[0] || null;
 
   // Modals state
   const [modalType, setModalType] = useState<
@@ -90,9 +92,16 @@ export const ProgramsAndOutcomesView: React.FC = () => {
 
   // Program Modals
   const openAddProgram = () => {
+    if (!academicScope.canCreateProgram) {
+      showMsg('Access Restricted: Only Admin, Head of Faculty, Head of School, or HOD can create programs.', 'error');
+      return;
+    }
     setProgCode(`BTECH-CSE-2026`);
     setProgName('');
-    setDeptId(departments[0]?.id || '');
+    const defaultDeptId = academicScope.isHod && academicScope.ledDepartment
+      ? academicScope.ledDepartment.id
+      : (academicScope.visibleDepartments[0]?.id || departments[0]?.id || '');
+    setDeptId(defaultDeptId);
     setDegreeType('UNDERGRADUATE');
     setTotalTerms(8);
     setBatchYear('2026-2030');
@@ -258,7 +267,7 @@ export const ProgramsAndOutcomesView: React.FC = () => {
 
           {/* Program Selector & Action */}
           <div className="flex flex-wrap items-center gap-2">
-            {programs.length > 0 && (
+            {displayedPrograms.length > 0 && (
               <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs">
                 <span className="text-slate-400 font-semibold">Active Program:</span>
                 <select
@@ -266,7 +275,7 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                   onChange={(e) => setActiveProgramId(e.target.value)}
                   className="bg-transparent text-purple-300 font-bold focus:outline-none cursor-pointer"
                 >
-                  {programs.map((p) => (
+                  {displayedPrograms.map((p) => (
                     <option key={p.id} value={p.id} className="bg-slate-900 text-white">
                       {p.code} - {p.name}
                     </option>
@@ -275,7 +284,7 @@ export const ProgramsAndOutcomesView: React.FC = () => {
               </div>
             )}
 
-            {subTab === 'programs' && (
+            {subTab === 'programs' && academicScope.canCreateProgram && (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowBulkModal('programs')}
@@ -294,7 +303,7 @@ export const ProgramsAndOutcomesView: React.FC = () => {
               </div>
             )}
 
-            {subTab === 'pos' && activeProgram && (
+            {subTab === 'pos' && activeProgram && academicScope.canCreateProgram && (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowBulkModal('pos')}
@@ -326,7 +335,7 @@ export const ProgramsAndOutcomesView: React.FC = () => {
               </div>
             )}
 
-            {subTab === 'psos' && activeProgram && (
+            {subTab === 'psos' && activeProgram && academicScope.canCreateProgram && (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowBulkModal('psos')}
@@ -417,7 +426,7 @@ export const ProgramsAndOutcomesView: React.FC = () => {
             </div>
           ) : (
             <div className="divide-y divide-slate-800">
-              {programs.map((p) => {
+              {displayedPrograms.map((p) => {
                 const dept = departments.find((d) => d.id === p.departmentId);
                 const posCount = programOutcomes.filter((po) => po.programId === p.id && po.type === 'PO').length;
                 const psosCount = programOutcomes.filter((po) => po.programId === p.id && po.type === 'PSO').length;
@@ -471,24 +480,28 @@ export const ProgramsAndOutcomesView: React.FC = () => {
                       >
                         Manage Outcomes
                       </button>
-                      <button
-                        onClick={() => openEditProgram(p)}
-                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
-                        title="Edit Program"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete program "${p.name}"? This also removes its mapped POs/PSOs.`)) {
-                            deleteProgram(p.id);
-                          }
-                        }}
-                        className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
-                        title="Delete Program"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {academicScope.canCreateProgram && (
+                        <>
+                          <button
+                            onClick={() => openEditProgram(p)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+                            title="Edit Program"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete program "${p.name}"? This also removes its mapped POs/PSOs.`)) {
+                                deleteProgram(p.id);
+                              }
+                            }}
+                            className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+                            title="Delete Program"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -723,19 +736,26 @@ export const ProgramsAndOutcomesView: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-slate-300 block mb-1 font-semibold">Department</label>
-                    <select
-                      value={deptId}
-                      onChange={(e) => setDeptId(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
-                    >
-                      {departments.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.code}: {d.name}
-                        </option>
-                      ))}
-                      {departments.length === 0 && <option value="">No departments created yet</option>}
-                    </select>
+                    <label className="text-slate-300 block mb-1 font-semibold">Department *</label>
+                    {academicScope.isHod && academicScope.ledDepartment ? (
+                      <div className="w-full bg-slate-950/80 border border-amber-800/60 rounded-xl p-2.5 text-amber-300 flex items-center justify-between">
+                        <span>{academicScope.ledDepartment.code}: {academicScope.ledDepartment.name}</span>
+                        <span className="text-[10px] bg-amber-950 px-2 py-0.5 rounded border border-amber-800 font-mono text-amber-400">Your Governed Dept</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={deptId}
+                        onChange={(e) => setDeptId(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                      >
+                        {academicScope.visibleDepartments.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.code}: {d.name}
+                          </option>
+                        ))}
+                        {academicScope.visibleDepartments.length === 0 && <option value="">No departments created yet</option>}
+                      </select>
+                    )}
                   </div>
                   <div>
                     <label className="text-slate-300 block mb-1 font-semibold">Degree Type</label>

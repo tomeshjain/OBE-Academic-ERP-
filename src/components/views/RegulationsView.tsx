@@ -16,6 +16,7 @@ import {
   Scale,
   Calendar,
   FileSpreadsheet,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const RegulationsView: React.FC = () => {
@@ -27,7 +28,10 @@ export const RegulationsView: React.FC = () => {
     deleteRegulation,
     activeSubTab,
     setActiveSubTab,
+    academicScope,
   } = useApp();
+
+  const canManageRegulations = academicScope.isAdmin || academicScope.isHeadOfFaculty;
 
   const [subTab, setSubTab] = useState<'regulations' | 'framework'>(
     (['regulations', 'framework'].includes(activeSubTab) ? (activeSubTab as any) : 'regulations')
@@ -63,6 +67,7 @@ export const RegulationsView: React.FC = () => {
   };
 
   const openAdd = () => {
+    if (!canManageRegulations) return;
     setCode('R2026');
     setName('');
     setYearOfInception(2026);
@@ -74,6 +79,7 @@ export const RegulationsView: React.FC = () => {
   };
 
   const openEdit = (reg: AcademicRegulation) => {
+    if (!canManageRegulations) return;
     setCode(reg.code);
     setName(reg.name);
     setYearOfInception(reg.yearOfInception);
@@ -91,7 +97,7 @@ export const RegulationsView: React.FC = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim() || !name.trim()) return;
+    if (!canManageRegulations || !code.trim() || !name.trim()) return;
 
     if (modalType === 'add') {
       addRegulation({
@@ -136,24 +142,31 @@ export const RegulationsView: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowBulkUpload(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
-              title="Bulk Upload CSV"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-teal-400" />
-              <span>Bulk Upload</span>
-            </button>
-            <button
-              onClick={openAdd}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Regulation</span>
-            </button>
-          </div>
+          {canManageRegulations ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkUpload(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
+                title="Bulk Upload CSV"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-teal-400" />
+                <span>Bulk Upload</span>
+              </button>
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Regulation</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-teal-300">
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>Institutional Governance (Read-Only)</span>
+            </div>
+          )}
         </div>
 
         {/* Feedback Alert */}
@@ -203,13 +216,15 @@ export const RegulationsView: React.FC = () => {
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
                 Define the institutional academic regulation such as R2026 Autonomous Regulations with total graduation credits and grading criteria.
               </p>
-              <button
-                onClick={openAdd}
-                className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Regulation (e.g., R2026)</span>
-              </button>
+              {canManageRegulations && (
+                <button
+                  onClick={openAdd}
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl inline-flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Regulation (e.g., R2026)</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-slate-800">
@@ -235,24 +250,26 @@ export const RegulationsView: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 self-end md:self-center">
-                    <button
-                      onClick={() => openEdit(r)}
-                      className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors"
-                      title="Edit Regulation"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm(`Delete regulation "${r.code}"?`)) deleteRegulation(r.id);
-                      }}
-                      className="p-2 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-xl transition-colors"
-                      title="Delete Regulation"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  {canManageRegulations && (
+                    <div className="flex items-center gap-2 self-end md:self-center">
+                      <button
+                        onClick={() => openEdit(r)}
+                        className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors"
+                        title="Edit Regulation"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Delete regulation "${r.code}"?`)) deleteRegulation(r.id);
+                        }}
+                        className="p-2 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-xl transition-colors"
+                        title="Delete Regulation"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

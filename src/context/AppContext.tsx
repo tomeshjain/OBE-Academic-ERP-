@@ -33,6 +33,8 @@ import {
   EmailSmtpConfig,
   OutgoingEmailNotification,
 } from '@/types/erp';
+import { computeAcademicScope, AcademicRoleScope } from '@/lib/permissions';
+export type { AcademicRoleScope } from '@/lib/permissions';
 
 export const DEFAULT_QUESTION_PAPER_TEMPLATES: QuestionPaperTemplate[] = [
   {
@@ -214,8 +216,9 @@ interface AppContextType {
   setActiveSubTab: (tab: string) => void;
   navigateTo: (menuId: MenuItemId, subTabId?: string) => void;
 
-  // Authenticated User Session
+  // Authenticated User Session & Role Scoping
   currentUser: UserAccount | null;
+  academicScope: AcademicRoleScope;
   login: (user: UserAccount) => void;
   logout: () => void;
 
@@ -584,6 +587,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem('academic_erp_current_user');
     }
   };
+
+  // Dynamic Academic Scope & Governance Permissions
+  const academicScope = React.useMemo(() => {
+    return computeAcademicScope(
+      currentUser,
+      faculties,
+      schools,
+      departments,
+      programs,
+      courses,
+      courseSections
+    );
+  }, [currentUser, faculties, schools, departments, programs, courses, courseSections]);
 
   // Hydrate from localStorage on client mount
   useEffect(() => {
@@ -2225,6 +2241,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         theme,
         setTheme,
         currentUser,
+        academicScope,
         login,
         logout,
         users,

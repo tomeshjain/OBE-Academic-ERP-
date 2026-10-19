@@ -47,10 +47,26 @@ function DashboardShell() {
     courses,
     activeCourseId,
     setActiveCourseId,
+    academicScope,
   } = useApp();
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showSecurityAudit, setShowSecurityAudit] = useState(false);
+
+  const visiblePrograms = academicScope?.visiblePrograms ?? programs;
+  const visibleCourses = academicScope?.visibleCourses ?? courses;
+
+  React.useEffect(() => {
+    if (visiblePrograms.length > 0 && !visiblePrograms.some((p) => p.id === activeProgramId)) {
+      setActiveProgramId(visiblePrograms[0].id);
+    }
+  }, [visiblePrograms, activeProgramId, setActiveProgramId]);
+
+  React.useEffect(() => {
+    if (visibleCourses.length > 0 && !visibleCourses.some((c) => c.id === activeCourseId)) {
+      setActiveCourseId(visibleCourses[0].id);
+    }
+  }, [visibleCourses, activeCourseId, setActiveCourseId]);
 
   // Authentication Portal (Enforces: initial setup is only available on login portal if system is completely empty)
   if (!currentUser) {
@@ -99,7 +115,7 @@ function DashboardShell() {
                   className="bg-transparent text-white font-bold text-xs focus:outline-none cursor-pointer max-w-[150px] md:max-w-[190px] truncate"
                   title="Global Active Academic Program"
                 >
-                  {programs.map((p) => (
+                  {visiblePrograms.map((p) => (
                     <option key={p.id} value={p.id} className="bg-slate-950 text-white">
                       {p.code} - {p.name}
                     </option>
@@ -121,7 +137,7 @@ function DashboardShell() {
                   className="bg-transparent text-teal-200 font-bold text-xs focus:outline-none cursor-pointer max-w-[160px] md:max-w-[220px] truncate"
                   title="Global Active Course"
                 >
-                  {courses.map((c) => (
+                  {visibleCourses.map((c) => (
                     <option key={c.id} value={c.id} className="bg-slate-950 text-white">
                       {c.code} - {c.title}
                     </option>
